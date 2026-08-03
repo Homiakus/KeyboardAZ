@@ -21,7 +21,16 @@ jobs:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
       - name: Check formatting of new desktop lifecycle files
-        run: test -z "$(gofmt -l tray_policy.go tray_policy_test.go tray_windows.go)"
+        shell: bash
+        run: |
+          files=(tray_policy.go tray_policy_test.go tray_windows.go)
+          unformatted="$(gofmt -l "${files[@]}")"
+          if [[ -n "$unformatted" ]]; then
+            echo "Files requiring gofmt:"
+            echo "$unformatted"
+            gofmt -d "${files[@]}"
+            exit 1
+          fi
       - run: go test -race ./config ./serial ./textinput
       - run: go vet ./config ./serial ./textinput
       - run: go test -bench=. -benchmem ./textinput
