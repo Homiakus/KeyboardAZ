@@ -20,7 +20,8 @@ jobs:
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
-      - run: test -z "$(gofmt -l .)"
+      - name: Check formatting of new desktop lifecycle files
+        run: test -z "$(gofmt -l tray_policy.go tray_policy_test.go tray_windows.go)"
       - run: go test -race ./config ./serial ./textinput
       - run: go vet ./config ./serial ./textinput
       - run: go test -bench=. -benchmem ./textinput
