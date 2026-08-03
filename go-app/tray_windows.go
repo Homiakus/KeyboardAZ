@@ -40,8 +40,8 @@ const (
 	swHide    = 0
 	swRestore = 9
 
-	mfString      = 0x00000000
-	mfSeparator   = 0x00000800
+	mfString       = 0x00000000
+	mfSeparator    = 0x00000800
 	tpmRightButton = 0x0002
 	tpmReturnCmd   = 0x0100
 
@@ -67,7 +67,7 @@ var (
 	procCreateWindowEx      = user32.NewProc("CreateWindowExW")
 	procDefWindowProc       = user32.NewProc("DefWindowProcW")
 	procGetMessage          = user32.NewProc("GetMessageW")
-	procTranslateMessage    = user32.NewProc("TranslateMessage")
+	procTranslateMessage    = user32.NewProc("TranslateMessageW")
 	procDispatchMessage     = user32.NewProc("DispatchMessageW")
 	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
 	procPostMessage         = user32.NewProc("PostMessageW")
