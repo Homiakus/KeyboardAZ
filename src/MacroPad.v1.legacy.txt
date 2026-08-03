@@ -1,0 +1,294 @@
+/**
+ * @file: MacroPad.ino
+ * @description: Прошивка Hapticpad 22+4 на RP2040. Вся логика на Core 0.
+ * @dependencies: Arduino.h, earlephilhower arduino-pico
+ * @created: 2026-01
+ */
+
+#include <Arduino.h>
+
+// #define DEBUG_SERIAL  // раскомментировать для отладочного вывода
+
+// --- Кнопки: 22 основные + 4 переключателя слоёв ---
+#define MAIN_BUTTONS  22
+#define LAYER_BUTTONS 4
+#define TOTAL_BUTTONS 26
+
+// Порядок: 0..21 — основные, 22..25 — переключатели слоёв (Thumb_1..4)
+// Маппинг исправлен согласно физической распайке (от указательного к безымянному)
+const uint8_t buttonPins[TOTAL_BUTTONS] = {
+  2, 21, 0, 1, 3, 4, 6, 7, 20, 5, 8, 12, 9, 10, 13, 17, 16, 14, 18, 19, 15, 11,
+  22, 26, 27, 28
+};
+
+// --- Антидребезг ---
+// Удерживайте кнопку ~20–50 ms перед отпусканием, иначе stableState не успеет и press/combo не отправится.
+#define DEBOUNCE_DELAY_MS 20
+
+// Небольшая пауза, чтобы не крутить loop() в busy-spin и дать USB CDC время на обслуживание.
+#define LOOP_IDLE_DELAY_MS 1
+
+struct ButtonState {
+  bool currentState;      // Текущее состояние (после чтения)
+  bool stableState;        // Стабильное состояние (после антидребезга)
+  bool lastStableState;    // Предыдущее стабильное состояние
+  unsigned long lastChangeTime;  // Время последнего изменения
+  bool debouncing;         // Флаг процесса антидребезга
+};
+
+ButtonState buttonStates[TOTAL_BUTTONS];
+
+// --- Состояние сочетаний ---
+// Битовая маска для активных кнопок (O(1) вместо O(n) для проверки/добавления/удаления)
+// Бит i установлен = кнопка i активна (0-21 для основных кнопок)
+uint32_t activeMask = 0;
+
+// --- Слои ---
+uint8_t currentLayer = 0;
+unsigned long lastActivityTime = 0;  // Время последнего нажатия основной кнопки
+#define INACTIVITY_TIMEOUT_MS 30000  // 30 секунд таймаут
+
+// --- Функции ---
+void updateDebounce();
+void updateLayer();
+void processButtons();
+char* appendUint8(char* ptr, uint8_t value);
+void sendMessage(char typeCode, uint8_t layer, const uint8_t* buttons, uint8_t count);
+
+// --- Core 0: вся логика ---
+void setup() {
+  Serial.begin(115200);
+
+#ifdef DEBUG_SERIAL
+  unsigned long timeout = millis() + 5000;
+  while (!Serial && millis() < timeout) {
+    delay(10);
+  }
+#endif
+  delay(10);
+
+  // Инициализация кнопок
+  for (int i = 0; i < TOTAL_BUTTONS; i++) {
+    pinMode(buttonPins[i], INPUT_PULLUP);
+    buttonStates[i].currentState = false;
+    buttonStates[i].stableState = false;
+    buttonStates[i].lastStableState = false;
+    buttonStates[i].lastChangeTime = 0;
+    buttonStates[i].debouncing = false;
+  }
+  
+  lastActivityTime = millis();
+
+  Serial.write("r\n");  // Компактный формат: ready
+#ifdef DEBUG_SERIAL
+  Serial.println("DEBUG: System initialized");
+#endif
+}
+
+void loop() {
+  // Чтение текущего состояния всех кнопок
+  for (int i = 0; i < TOTAL_BUTTONS; i++) {
+    buttonStates[i].currentState = !digitalRead(buttonPins[i]);  // LOW = нажато
+  }
+  
+  // Обновление антидребезга (обновляет stableState)
+  updateDebounce();
+  
+  // Обновление текущего слоя
+  updateLayer();
+  
+  // Обработка нажатий основных кнопок (0-21)
+  processButtons();
+
+  delay(LOOP_IDLE_DELAY_MS);
+}
+
+void updateDebounce() {
+  unsigned long currentTime = millis();
+  
+  for (int i = 0; i < TOTAL_BUTTONS; i++) {
+    ButtonState* btn = &buttonStates[i];
+    
+    // Оптимизация: пропускаем проверки для стабильных кнопок без изменений
+    if (!btn->debouncing) {
+      // Если флаг не установлен, проверяем только изменение состояния
+      if (btn->currentState != btn->stableState) {
+        // Начало процесса антидребезга
+        btn->debouncing = true;
+        btn->lastChangeTime = currentTime;
+      }
+      continue;  // Пропускаем остальные проверки для стабильных кнопок
+    }
+    
+    // Если уже debouncing:
+    if (btn->currentState == btn->stableState) {
+      // Состояние стабилизировалось до исходного - сбрасываем debouncing
+      btn->debouncing = false;
+    } else if (currentTime - btn->lastChangeTime >= DEBOUNCE_DELAY_MS) {
+      // Прошло достаточно времени, состояние стабильно
+      btn->stableState = btn->currentState;
+      btn->debouncing = false;
+    }
+  }
+  // НЕ обновляем lastStableState здесь - это делается в processButtons() после обработки переходов
+}
+
+void updateLayer() {
+  unsigned long currentTime = millis();
+  
+  // Проверка таймаута: если прошло 30 секунд без активности, принудительно устанавливаем слой 1
+  if (lastActivityTime > 0 && (currentTime - lastActivityTime >= INACTIVITY_TIMEOUT_MS)) {
+    currentLayer = 1;
+    return;
+  }
+  
+  // Слой: кнопки 22–25 (индексы 22..25). Приоритет — больший индекс.
+  // Используем битовую маску для определения активных слоевых кнопок
+  uint8_t layerMask = 0;
+  for (uint8_t i = 0; i < LAYER_BUTTONS; i++) {
+    if (buttonStates[MAIN_BUTTONS + i].stableState) {
+      layerMask |= (1 << i);
+    }
+  }
+  
+  // Определяем слой по старшему установленному биту (приоритет больший индекс)
+  uint8_t newLayer = 1;  // По умолчанию слой 1
+  for (int i = LAYER_BUTTONS - 1; i >= 0; i--) {
+    if (layerMask & (1 << i)) {
+      newLayer = (uint8_t)i;
+      break;
+    }
+  }
+  currentLayer = newLayer;
+}
+
+void processButtons() {
+  // press/combo только для основных кнопок (0–21). Слоевые (22–25) меняют слой, не отправляют press/combo.
+
+  // Обрабатываем переходы для каждой кнопки (edge detection)
+  uint8_t buttonsToSend[MAIN_BUTTONS];
+  uint8_t buttonsToSendCount = 0;
+  bool shouldSend = false;
+  bool hasPressedButtons = false;
+  
+  for (int i = 0; i < MAIN_BUTTONS; i++) {
+    bool currentStable = buttonStates[i].stableState;
+    bool lastStable = buttonStates[i].lastStableState;
+    uint32_t buttonBit = (1UL << i);  // Бит для текущей кнопки
+    
+    if (!lastStable && currentStable) {
+      // Переход: отпущено → нажато (press detected)
+      // Добавляем в активные кнопки (O(1) операция)
+      if (!(activeMask & buttonBit)) {
+        activeMask |= buttonBit;
+      }
+      hasPressedButtons = true;
+    } else if (lastStable && !currentStable) {
+      // Переход: нажато → отпущено (release detected)
+      // Отправляем combo при отпускании ЛЮБОЙ кнопки из группы нажатых
+      uint8_t activeCount = __builtin_popcount(activeMask);
+      
+      if (activeCount > 1) {
+        // Комбо: отправляем все активные кнопки (включая текущую) при отпускании любой
+        buttonsToSendCount = 0;
+        for (uint8_t k = 0; k < MAIN_BUTTONS; k++) {
+          if (activeMask & (1UL << k)) {
+            buttonsToSend[buttonsToSendCount++] = k;
+          }
+        }
+        shouldSend = true;
+        // Удаляем текущую кнопку и сбрасываем маску (все обработано)
+        activeMask = 0;
+      } else if (activeCount == 1) {
+        // Одиночное нажатие: отправляем только эту кнопку
+        buttonsToSendCount = 1;
+        buttonsToSend[0] = i;
+        shouldSend = true;
+        activeMask = 0;
+      } else {
+        // activeCount == 0 (не должно происходить, но на всякий случай)
+        activeMask &= ~buttonBit;
+      }
+    } else if (currentStable) {
+      // Кнопка удерживается
+      hasPressedButtons = true;
+    }
+  }
+
+  if (hasPressedButtons) {
+    lastActivityTime = millis();
+  }
+  
+  // Отправляем сразу, не ждём activeMask == 0
+  if (shouldSend) {
+    sendMessage((buttonsToSendCount == 1) ? 'p' : 'c', currentLayer, buttonsToSend, buttonsToSendCount);
+    shouldSend = false;  // Сброс флага
+  }
+  
+  // Обновляем lastStableState для следующей итерации (в КОНЦЕ функции)
+  for (int i = 0; i < MAIN_BUTTONS; i++) {
+    buttonStates[i].lastStableState = buttonStates[i].stableState;
+  }
+
+#ifdef DEBUG_SERIAL
+  static unsigned long lastDebug = 0;
+  if (millis() - lastDebug >= 1000) {
+    lastDebug = millis();
+    uint8_t pressedCount = 0;
+    for (int i = 0; i < MAIN_BUTTONS; i++) {
+      if (buttonStates[i].stableState) pressedCount++;
+    }
+    Serial.print("DEBUG: pressed=");
+    Serial.print(pressedCount);
+    Serial.print(" layer=");
+    Serial.print(currentLayer);
+    Serial.print(" active=");
+    Serial.println(__builtin_popcount(activeMask));
+  }
+#endif
+}
+
+char* appendUint8(char* ptr, uint8_t value) {
+  if (value >= 100) {
+    *ptr++ = '0' + (value / 100);
+    value %= 100;
+    *ptr++ = '0' + (value / 10);
+    *ptr++ = '0' + (value % 10);
+    return ptr;
+  }
+
+  if (value >= 10) {
+    *ptr++ = '0' + (value / 10);
+  }
+
+  *ptr++ = '0' + (value % 10);
+  return ptr;
+}
+
+void sendMessage(char typeCode, uint8_t layer, const uint8_t* buttons, uint8_t count) {
+  if (count == 0) return;
+
+  // Компактный формат: тип,слой,кнопки
+  // Примеры: "p,1,5\n" (press) или "c,1,5,10\n" (combo)
+  // В 4-6 раз компактнее JSON, быстрее формирование и парсинг
+  static char buffer[64];  // Достаточно для 22 кнопок: "c,3,0,1,2,...,21\n"
+  char* ptr = buffer;
+  
+  // Тип: 'p' для press, 'c' для combo
+  *ptr++ = typeCode;
+  *ptr++ = ',';
+  
+  // Слой (0-3)
+  ptr = appendUint8(ptr, layer);
+  *ptr++ = ',';
+  
+  // Кнопки через запятую
+  for (uint8_t i = 0; i < count; i++) {
+    if (i > 0) *ptr++ = ',';
+    ptr = appendUint8(ptr, buttons[i]);
+  }
+  
+  *ptr++ = '\n';
+
+  Serial.write(reinterpret_cast<const uint8_t*>(buffer), ptr - buffer);
+}

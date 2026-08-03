@@ -1,0 +1,1228 @@
+{
+  "version": 1,
+  "active_profile": "default",
+  "profiles": {
+    "default": {
+      "name": "Основной",
+      "bindings": {
+        "en": {
+          "engineering": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "."
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": ","
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": ":"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": ";"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "_"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "-"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "="
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "+"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "*"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "/"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "\\"
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "}"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "\u003c"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "\u003e"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "|"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "\u0026"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "#"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "("
+            },
+            "RING_2": {
+              "type": "text",
+              "text": ")"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "["
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "]"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "{"
+            }
+          },
+          "engineering_numbers": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "!"
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": "@"
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "#"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "$"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "%"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "^"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "\u0026"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "*"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "("
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": ")"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": ","
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "°"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "µ"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "Ω"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "≤"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "≥"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "≠"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "±"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "−"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "×"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "÷"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "≈"
+            }
+          },
+          "letters": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "l"
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": "h"
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "n"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "s"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "m"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "b"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "f"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "u"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "e"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "i"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "p"
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "y"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "g"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "a"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "o"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "v"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "k"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "c"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "d"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "t"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "r"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "w"
+            }
+          },
+          "numbers": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "1"
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": "2"
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "3"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "4"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "5"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "6"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "7"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "8"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "9"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "0"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "."
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "%"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "("
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": ")"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "\u003c"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "\u003e"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": ","
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "+"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "-"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "*"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "/"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "="
+            }
+          },
+          "punctuation": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "."
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": ","
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "?"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "!"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": ":"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": ";"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "-"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "_"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "—"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "…"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "/"
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "}"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "«"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "»"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "\""
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "'"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "\\"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "("
+            },
+            "RING_2": {
+              "type": "text",
+              "text": ")"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "["
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "]"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "{"
+            }
+          },
+          "rare": {
+            "INDEX_4": {
+              "type": "text",
+              "text": "z"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "j"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "q"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "x"
+            }
+          },
+          "shift_letters": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "L"
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": "H"
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "N"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "S"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "M"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "B"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "F"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "U"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "E"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "I"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "P"
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "Y"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "G"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "A"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "O"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "V"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "K"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "C"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "D"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "T"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "R"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "W"
+            }
+          },
+          "shift_rare": {
+            "INDEX_4": {
+              "type": "text",
+              "text": "Z"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "J"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "Q"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "X"
+            }
+          }
+        },
+        "ru": {
+          "engineering": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "."
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": ","
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": ":"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": ";"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "_"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "-"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "="
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "+"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "*"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "/"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "\\"
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "}"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "\u003c"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "\u003e"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "|"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "\u0026"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "#"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "("
+            },
+            "RING_2": {
+              "type": "text",
+              "text": ")"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "["
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "]"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "{"
+            }
+          },
+          "engineering_numbers": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "!"
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": "@"
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "#"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "$"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "%"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "^"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "\u0026"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "*"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "("
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": ")"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": ","
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "°"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "µ"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "Ω"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "≤"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "≥"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "≠"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "±"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "−"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "×"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "÷"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "≈"
+            }
+          },
+          "letters": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "д"
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": "р"
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "е"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "и"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "ь"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "б"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "м"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "л"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "о"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "а"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "ы"
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "я"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "у"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "с"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "к"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "з"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "ч"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "п"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "в"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "н"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "т"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "г"
+            }
+          },
+          "numbers": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "1"
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": "2"
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "3"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "4"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "5"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "6"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "7"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "8"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "9"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "0"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "."
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "%"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "("
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": ")"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "\u003c"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "\u003e"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": ","
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "+"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "-"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "*"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "/"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "="
+            }
+          },
+          "punctuation": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "."
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": ","
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "?"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "!"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": ":"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": ";"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "-"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "_"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "—"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "…"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "/"
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "}"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "«"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "»"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "\""
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "'"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "\\"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "("
+            },
+            "RING_2": {
+              "type": "text",
+              "text": ")"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "["
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "]"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "{"
+            }
+          },
+          "rare": {
+            "INDEX_3": {
+              "type": "text",
+              "text": "э"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "й"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "ъ"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "ё"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "ю"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "ш"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "х"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "ж"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "щ"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "ф"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "ц"
+            }
+          },
+          "shift_letters": {
+            "INDEX_1": {
+              "type": "text",
+              "text": "Д"
+            },
+            "INDEX_2": {
+              "type": "text",
+              "text": "Р"
+            },
+            "INDEX_3": {
+              "type": "text",
+              "text": "Е"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "И"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "Ь"
+            },
+            "INDEX_6": {
+              "type": "text",
+              "text": "Б"
+            },
+            "MIDDLE_1": {
+              "type": "text",
+              "text": "М"
+            },
+            "MIDDLE_2": {
+              "type": "text",
+              "text": "Л"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "О"
+            },
+            "MIDDLE_4": {
+              "type": "text",
+              "text": "А"
+            },
+            "MIDDLE_5": {
+              "type": "text",
+              "text": "Ы"
+            },
+            "PINKY_1": {
+              "type": "text",
+              "text": "Я"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "У"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "С"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "К"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "З"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "Ч"
+            },
+            "RING_1": {
+              "type": "text",
+              "text": "П"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "В"
+            },
+            "RING_3": {
+              "type": "text",
+              "text": "Н"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "Т"
+            },
+            "RING_5": {
+              "type": "text",
+              "text": "Г"
+            }
+          },
+          "shift_rare": {
+            "INDEX_3": {
+              "type": "text",
+              "text": "Э"
+            },
+            "INDEX_4": {
+              "type": "text",
+              "text": "Й"
+            },
+            "INDEX_5": {
+              "type": "text",
+              "text": "Ъ"
+            },
+            "MIDDLE_3": {
+              "type": "text",
+              "text": "Ё"
+            },
+            "PINKY_2": {
+              "type": "text",
+              "text": "Ю"
+            },
+            "PINKY_3": {
+              "type": "text",
+              "text": "Ш"
+            },
+            "PINKY_4": {
+              "type": "text",
+              "text": "Х"
+            },
+            "PINKY_5": {
+              "type": "text",
+              "text": "Ж"
+            },
+            "PINKY_6": {
+              "type": "text",
+              "text": "Щ"
+            },
+            "RING_2": {
+              "type": "text",
+              "text": "Ф"
+            },
+            "RING_4": {
+              "type": "text",
+              "text": "Ц"
+            }
+          }
+        }
+      },
+      "thumb_taps": {
+        "backspace": "backspace",
+        "enter": "enter",
+        "space": "space"
+      }
+    }
+  }
+}

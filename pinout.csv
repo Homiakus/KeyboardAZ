@@ -1,0 +1,27 @@
+Type,Index,GPIO,Button,Finger,Pico_Physical_Pin,Tap_Action,Hold_Modifier
+main,0,2,INDEX_1,Index,4,,
+main,1,21,INDEX_2,Index,27,,
+main,2,0,INDEX_3,Index,1,,
+main,3,1,INDEX_4,Index,2,,
+main,4,3,INDEX_5,Index,5,,
+main,5,4,INDEX_6,Index,6,,
+main,6,6,MIDDLE_1,Middle,9,,
+main,7,7,MIDDLE_2,Middle,10,,
+main,8,20,MIDDLE_3,Middle,26,,
+main,9,5,MIDDLE_4,Middle,7,,
+main,10,8,MIDDLE_5,Middle,11,,
+main,11,12,RING_1,Ring,16,,
+main,12,9,RING_2,Ring,12,,
+main,13,10,RING_3,Ring,14,,
+main,14,13,RING_4,Ring,17,,
+main,15,17,RING_5,Ring,22,,
+main,16,16,PINKY_1,Pinky,21,,
+main,17,14,PINKY_2,Pinky,19,,
+main,18,18,PINKY_3,Pinky,24,,
+main,19,19,PINKY_4,Pinky,25,,
+main,20,15,PINKY_5,Pinky,20,,
+main,21,11,PINKY_6,Pinky,15,,
+thumb,22,22,THUMB_1,Thumb,29,Space,Shift
+thumb,23,26,THUMB_2,Thumb,31,Enter,Punctuation
+thumb,24,27,THUMB_3,Thumb,32,Toggle EN/RU,Rare letters
+thumb,25,28,THUMB_4,Thumb,34,Backspace,Numbers/Math
