@@ -1,0 +1,49 @@
+name: quality
+
+on:
+  push:
+    branches: [main, "agent/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go-core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - run: test -z "$(gofmt -l .)"
+      - run: go test -race ./config ./serial ./textinput
+      - run: go vet ./config ./serial ./textinput
+      - run: go test -bench=. -benchmem ./textinput
+
+  windows-desktop:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: go-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - run: go test ./config ./serial ./textinput ./handler
+      - run: go test .
+      - run: go vet ./...
+      - run: go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../dist/KeyboardAZ.exe .
+
+  firmware-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./tests/run_native_firmware_tests.sh
