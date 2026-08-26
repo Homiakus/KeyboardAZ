@@ -25,6 +25,7 @@ jobs:
         run: |
           files=(
             tray_policy.go tray_policy_test.go tray_windows.go
+            protocol/event.go protocol/event_test.go appcore/state.go appcore/state_test.go
             telemetry/health.go telemetry/latency.go telemetry/health_test.go
             device/identity.go device/discovery.go device/identity_test.go
             device/discovery_additional_test.go device/store.go device/store_test.go device/store_replace_unix.go
@@ -34,7 +35,7 @@ jobs:
             transport/protocol_v3.go transport/protocol_v3_test.go
             latencyreport/report.go latencyreport/report_test.go tools/latency/main.go
             layoutedit/session.go layoutedit/session_test.go layoutedit/diagnostics.go layoutedit/diagnostics_test.go
-            layoutedit/catalog.go layoutedit/catalog_test.go
+            layoutedit/catalog.go layoutedit/catalog_test.go layoutedit/preview.go layoutedit/preview_test.go
             workspace/paths.go workspace/paths_test.go architecture/boundaries_test.go
             serial/reader.go handler/actions.go handler/keyboard_windows.go handler/telemetry_test.go
           )
@@ -45,8 +46,8 @@ jobs:
             gofmt -d "${files[@]}"
             exit 1
           fi
-      - run: go test -race ./config ./serial ./textinput ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
-      - run: go vet ./config ./serial ./textinput ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
+      - run: go test -race ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
+      - run: go vet ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
       - run: go test -bench=. -benchmem ./textinput ./transport
 
   windows-desktop:
@@ -61,8 +62,8 @@ jobs:
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
-      - run: go test ./config ./serial ./textinput ./handler ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
-      - run: go test -race ./telemetry ./handler ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture
+      - run: go test ./config ./serial ./textinput ./handler ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
+      - run: go test -race ./protocol ./appcore ./telemetry ./handler ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture
       - run: go test .
       - run: go vet ./...
       - run: New-Item -ItemType Directory -Force ../dist | Out-Null
