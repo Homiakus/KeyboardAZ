@@ -12,8 +12,8 @@ import (
 const maxHandshakeBufferedMessages = 64
 
 var (
-	ErrNotKeyboardAZ     = errors.New("device did not confirm KeyboardAZ protocol v2")
-	ErrHandshakeBacklog  = errors.New("too many messages before KeyboardAZ handshake")
+	ErrNotKeyboardAZ    = errors.New("device did not confirm KeyboardAZ protocol v2")
+	ErrHandshakeBacklog = errors.New("too many messages before KeyboardAZ handshake")
 )
 
 // Session is the minimum transport surface needed by discovery/recovery. The
