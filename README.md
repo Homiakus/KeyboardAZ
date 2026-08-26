@@ -126,6 +126,7 @@ legacy/                       архив несовместимой v1
 
 ## Документация
 
+- `docs/PARETO_IMPLEMENTATION_PLAN_2026-08-26.md` — приоритетный план модернизации: HIL, telemetry, Raw HID v3, USB identity, debounce, архитектура и release hardening;
 - `docs/TEXT_INPUT_V2.md` — protocol/state machine;
 - `docs/UI_CONFIGURATOR_V2_2.md` — visual configurator;
 - `docs/LOW_LATENCY_V2_1.md` — оптимизации задержки;
