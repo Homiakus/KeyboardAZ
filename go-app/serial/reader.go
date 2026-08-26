@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 
+	"hapticpad-go-app/telemetry"
+
 	gserial "go.bug.st/serial"
 )
 
@@ -86,6 +88,11 @@ func NewReader(portName string, baudRate int) (*Reader, error) {
 func (r *Reader) Messages() <-chan ButtonMessage { return r.messages }
 func (r *Reader) Errors() <-chan error           { return r.errors }
 
+// Health returns a privacy-safe process-level snapshot. It is intentionally
+// independent from GUI state so diagnostics continue to work while the window
+// is hidden or being refactored.
+func (r *Reader) Health() telemetry.HealthSnapshot { return telemetry.Process().Snapshot() }
+
 // WriteCommand отправляет текстовую команду на устройство через Serial порт.
 func (r *Reader) WriteCommand(cmd string) error {
 	r.mu.Lock()
@@ -139,13 +146,18 @@ func (r *Reader) readLoop() {
 
 		msg, err := parseCompactFormat(line)
 		if err != nil {
+			telemetry.Process().RecordParseError(err)
 			log.Printf("Failed to parse message: %s, error: %v", line, err)
 			continue
 		}
 		if !validateMessage(msg) {
+			err := fmt.Errorf("invalid message protocol=%d type=%q", msg.Protocol, msg.Type)
+			telemetry.Process().RecordParseError(err)
 			log.Printf("Invalid message: %+v", msg)
 			continue
 		}
+
+		telemetry.Process().ObserveTransportMessage(msg.Protocol, msg.Sequence, msg.Type, msg.Firmware)
 
 		select {
 		case r.messages <- msg:
