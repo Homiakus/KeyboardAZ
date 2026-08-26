@@ -16,6 +16,12 @@ jobs:
         working-directory: go-app
     steps:
       - uses: actions/checkout@v4
+      - name: Snapshot current GUI source
+        uses: actions/upload-artifact@v4
+        with:
+          name: keyboardaz-main-source
+          path: go-app/main.go
+          retention-days: 1
       - uses: actions/setup-go@v5
         with:
           go-version-file: go-app/go.mod
