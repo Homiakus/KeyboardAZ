@@ -27,6 +27,7 @@ jobs:
             tray_policy.go tray_policy_test.go tray_windows.go
             telemetry/health.go telemetry/latency.go telemetry/health_test.go
             device/identity.go device/discovery.go device/identity_test.go
+            connection/manager.go connection/manager_test.go
             transport/protocol_v3.go transport/protocol_v3_test.go
             serial/reader.go handler/actions.go handler/keyboard_windows.go handler/telemetry_test.go
           )
@@ -37,8 +38,8 @@ jobs:
             gofmt -d "${files[@]}"
             exit 1
           fi
-      - run: go test -race ./config ./serial ./textinput ./telemetry ./device ./transport
-      - run: go vet ./config ./serial ./textinput ./telemetry ./device ./transport
+      - run: go test -race ./config ./serial ./textinput ./telemetry ./device ./connection ./transport
+      - run: go vet ./config ./serial ./textinput ./telemetry ./device ./connection ./transport
       - run: go test -bench=. -benchmem ./textinput ./transport
 
   windows-desktop:
@@ -53,8 +54,8 @@ jobs:
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
-      - run: go test ./config ./serial ./textinput ./handler ./telemetry ./device ./transport
-      - run: go test -race ./telemetry ./handler ./transport
+      - run: go test ./config ./serial ./textinput ./handler ./telemetry ./device ./connection ./transport
+      - run: go test -race ./telemetry ./handler ./connection ./transport
       - run: go test .
       - run: go vet ./...
       - run: New-Item -ItemType Directory -Force ../dist | Out-Null
