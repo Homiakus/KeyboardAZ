@@ -59,6 +59,9 @@ func TestManagerDegradesButNeverStopsRecovery(t *testing.T) {
 		}
 		m.MarkAttemptFailed(now, errors.New("offline"))
 		s := m.Snapshot()
+		if !s.Recovering {
+			t.Fatalf("attempt %d unexpectedly left recovery epoch", attempt)
+		}
 		if attempt < degradedAfterAttempts {
 			if s.State != Reconnecting {
 				t.Fatalf("attempt %d state=%s want reconnecting", attempt, s.State)
@@ -86,18 +89,27 @@ func TestHandshakeSuccessResetsRecoveryState(t *testing.T) {
 	m := NewManager()
 	now := time.Unix(3000, 0)
 	m.MarkLost(now, errors.New("disconnect"))
+	if !m.Snapshot().Recovering {
+		t.Fatal("MarkLost must start a recovery epoch")
+	}
+
 	now = now.Add(250 * time.Millisecond)
 	if _, ok := m.BeginAttempt(now); !ok {
 		t.Fatal("expected recovery attempt")
 	}
+	if !m.Snapshot().Recovering {
+		t.Fatal("opening first recovery attempt must preserve recovery epoch")
+	}
+
 	m.BeginHandshake()
-	if m.Snapshot().State != Handshaking {
-		t.Fatalf("state=%s want handshaking", m.Snapshot().State)
+	s := m.Snapshot()
+	if s.State != Handshaking || !s.Recovering {
+		t.Fatalf("handshake lost recovery ownership: %+v", s)
 	}
 	m.MarkReady()
 
-	s := m.Snapshot()
-	if s.State != Ready || s.Attempts != 0 || !s.NextAttempt.IsZero() || s.LastError != "" {
+	s = m.Snapshot()
+	if s.State != Ready || s.Attempts != 0 || !s.NextAttempt.IsZero() || s.LastError != "" || s.Recovering {
 		t.Fatalf("unexpected ready snapshot: %+v", s)
 	}
 }
@@ -120,11 +132,11 @@ func TestManualLifecycleStates(t *testing.T) {
 		t.Fatal("expected handshaking")
 	}
 	m.MarkReady()
-	if m.Snapshot().State != Ready {
-		t.Fatal("expected ready")
+	if snap := m.Snapshot(); snap.State != Ready || snap.Recovering {
+		t.Fatalf("unexpected manual ready snapshot: %+v", snap)
 	}
 	m.MarkDetached()
-	if m.Snapshot().State != Detached {
-		t.Fatal("expected detached")
+	if snap := m.Snapshot(); snap.State != Detached || snap.Recovering {
+		t.Fatalf("unexpected detached snapshot: %+v", snap)
 	}
 }
