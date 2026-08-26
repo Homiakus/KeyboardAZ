@@ -23,15 +23,15 @@ var csvHeader = []string{
 }
 
 type Sample struct {
-	Sequence     uint32
-	T0FixtureNS  int64
-	T1FirmwareUS uint32
-	T2HostRxNS   int64
+	Sequence      uint32
+	T0FixtureNS   int64
+	T1FirmwareUS  uint32
+	T2HostRxNS    int64
 	T3SendInputNS int64
-	T4FixtureNS  int64
-	EventType    string
-	Button       int
-	Modifiers    uint8
+	T4FixtureNS   int64
+	EventType     string
+	Button        int
+	Modifiers     uint8
 }
 
 type Distribution struct {
