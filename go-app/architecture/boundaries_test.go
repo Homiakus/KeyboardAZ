@@ -1,7 +1,6 @@
 package architecture_test
 
 import (
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -71,7 +70,6 @@ func packageImports(dir string) (map[string][]string, error) {
 			}
 			result[entry.Name()] = append(result[entry.Name()], value)
 		}
-		ast.Inspect(file, func(ast.Node) bool { return true })
 	}
 	return result, nil
 }
