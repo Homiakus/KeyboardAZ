@@ -29,9 +29,11 @@ type Runtime struct {
 	stop     chan struct{}
 	done     chan struct{}
 
-	startOnce sync.Once
-	closeOnce sync.Once
-	cancel    context.CancelFunc
+	lifecycleMu sync.Mutex
+	started     bool
+	closed      bool
+	cancel      context.CancelFunc
+	closeOnce   sync.Once
 }
 
 func NewRuntime(controller *Controller) *Runtime {
@@ -76,11 +78,16 @@ func (r *Runtime) Start() {
 	if r == nil {
 		return
 	}
-	r.startOnce.Do(func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		r.cancel = cancel
-		go r.loop(ctx)
-	})
+	r.lifecycleMu.Lock()
+	if r.started || r.closed {
+		r.lifecycleMu.Unlock()
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	r.cancel = cancel
+	r.started = true
+	r.lifecycleMu.Unlock()
+	go r.loop(ctx)
 }
 
 // ConnectExplicit validates a user-selected candidate before making it the live
@@ -91,6 +98,12 @@ func (r *Runtime) ConnectExplicit(ctx context.Context, candidate device.Candidat
 		return errors.New("nil connection runtime")
 	}
 	r.Start()
+	r.lifecycleMu.Lock()
+	closed := r.closed
+	r.lifecycleMu.Unlock()
+	if closed {
+		return errors.New("connection runtime is closed")
+	}
 	if err := r.controller.ConnectExplicit(ctx, candidate); err != nil {
 		return err
 	}
@@ -102,6 +115,12 @@ func (r *Runtime) ConnectExplicit(ctx context.Context, candidate device.Candidat
 // Runtime invokes it itself when the current session reports EOF/error.
 func (r *Runtime) StartRecovery(err error) {
 	if r == nil {
+		return
+	}
+	r.lifecycleMu.Lock()
+	closed := r.closed
+	r.lifecycleMu.Unlock()
+	if closed {
 		return
 	}
 	r.controller.StartRecovery(err)
@@ -119,6 +138,12 @@ func (r *Runtime) WriteCommand(command string) error {
 	if r == nil {
 		return errors.New("nil connection runtime")
 	}
+	r.lifecycleMu.Lock()
+	closed := r.closed
+	r.lifecycleMu.Unlock()
+	if closed {
+		return errors.New("connection runtime is closed")
+	}
 	session := r.controller.Session()
 	if session == nil {
 		return errors.New("device not connected")
@@ -132,24 +157,25 @@ func (r *Runtime) Close() error {
 	}
 	var closeErr error
 	r.closeOnce.Do(func() {
-		if r.cancel != nil {
-			r.cancel()
+		r.lifecycleMu.Lock()
+		started := r.started
+		r.closed = true
+		cancel := r.cancel
+		r.lifecycleMu.Unlock()
+
+		if cancel != nil {
+			cancel()
 		}
 		close(r.stop)
-		r.signalWake()
 		closeErr = r.controller.Close()
-		// Start may never have been called. In that case there is no loop to
-		// close the output channels or done signal.
-		started := false
-		r.startOnce.Do(func() {
-			started = true
-			close(r.messages)
-			close(r.errors)
-			close(r.done)
-		})
-		if !started {
+
+		if started {
 			<-r.done
+			return
 		}
+		close(r.messages)
+		close(r.errors)
+		close(r.done)
 	})
 	return closeErr
 }
