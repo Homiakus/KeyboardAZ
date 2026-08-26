@@ -1,13 +1,14 @@
 /**
  * @file: main.go
  * @description: Главный файл приложения с GUI на GIO
- * @dependencies: gioui.org, hapticpad-go-app/serial, hapticpad-go-app/config, hapticpad-go-app/handler
+ * @dependencies: gioui.org, connection runtime, device discovery, config, handler
  * @created: 2026-01
  */
 
 package main
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"log"
@@ -15,15 +16,19 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"hapticpad-go-app/config"
+	"hapticpad-go-app/connection"
+	"hapticpad-go-app/device"
 	"hapticpad-go-app/handler"
 	"hapticpad-go-app/serial"
 	"hapticpad-go-app/textinput"
+	"hapticpad-go-app/workspace"
 
 	"gioui.org/app"
 	"gioui.org/font/gofont"
@@ -59,20 +64,22 @@ var fingerGroups = []FingerGroup{
 }
 
 type App struct {
-	mu            sync.RWMutex
-	theme         *material.Theme
-	serialPort    string
-	reader        *serial.Reader
-	keymap        *config.KeymapConfig
-	actionHandler *handler.Handler
-	resolver      *textinput.Resolver
-	layoutConfig  *textinput.LayoutConfig
-	layoutDraft   *textinput.LayoutConfig
-	layoutPath    string
-	configurator  *ConfiguratorState
-	currentView   int
-	dashboardNav  widget.Clickable
-	configNav     widget.Clickable
+	mu                sync.RWMutex
+	theme             *material.Theme
+	serialPort        string
+	connectionRuntime *connection.Runtime
+	workspace         workspace.Paths
+	portCandidates    []device.Candidate
+	keymap            *config.KeymapConfig
+	actionHandler     *handler.Handler
+	resolver          *textinput.Resolver
+	layoutConfig      *textinput.LayoutConfig
+	layoutDraft       *textinput.LayoutConfig
+	layoutPath        string
+	configurator      *ConfiguratorState
+	currentView       int
+	dashboardNav      widget.Clickable
+	configNav         widget.Clickable
 
 	// UI элементы
 	portList      widget.List
@@ -99,12 +106,6 @@ type App struct {
 	activeButtons    []int
 	history          []HistoryEntry
 	maxHistory       int
-
-	// Переподключение
-	reconnecting        bool
-	reconnectAttempts   int
-	reconnectInProgress bool
-	lastReconnectTime   time.Time
 
 	// Ошибки
 	errorMsg string
@@ -135,35 +136,38 @@ type AppSnapshot struct {
 }
 
 func (a *App) SnapshotState() AppSnapshot {
+	var reconnecting bool
+	var reconnectAttempts int
+	var runtimeConnected bool
+	if a.connectionRuntime != nil {
+		runtimeSnapshot := a.connectionRuntime.Snapshot()
+		state := runtimeSnapshot.Connection.State
+		reconnecting = runtimeSnapshot.Connection.Recovering || state == connection.Reconnecting || state == connection.Degraded || state == connection.Opening || state == connection.Handshaking
+		reconnectAttempts = runtimeSnapshot.Connection.Attempts
+		runtimeConnected = runtimeSnapshot.HasSession && state == connection.Ready
+	}
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	historyCopy := make([]HistoryEntry, len(a.history))
 	copy(historyCopy, a.history)
-
 	activeBtnsCopy := make([]int, len(a.activeButtons))
 	copy(activeBtnsCopy, a.activeButtons)
-
 	portItemsCopy := make([]string, len(a.portItems))
 	copy(portItemsCopy, a.portItems)
 
+	connected := a.connected
+	if a.connectionRuntime != nil {
+		connected = runtimeConnected
+	}
 	return AppSnapshot{
-		Connected:         a.connected,
-		Reconnecting:      a.reconnecting,
-		ReconnectAttempts: a.reconnectAttempts,
-		CurrentLayer:      a.currentLayer,
-		CurrentLanguage:   a.currentLanguage,
-		CurrentMode:       a.currentMode,
-		CurrentModifiers:  a.currentModifiers,
-		ActiveThumbMask:   a.activeThumbMask,
-		ProtocolVersion:   a.protocolVersion,
-		FirmwareVersion:   a.firmwareVersion,
-		ActiveButtons:     activeBtnsCopy,
-		ActiveButtonsMask: a.activeButtonsMask,
-		History:           historyCopy,
-		ErrorMsg:          a.errorMsg,
-		SerialPort:        a.serialPort,
-		PortItems:         portItemsCopy,
+		Connected: connected, Reconnecting: reconnecting, ReconnectAttempts: reconnectAttempts,
+		CurrentLayer: a.currentLayer, CurrentLanguage: a.currentLanguage, CurrentMode: a.currentMode,
+		CurrentModifiers: a.currentModifiers, ActiveThumbMask: a.activeThumbMask,
+		ProtocolVersion: a.protocolVersion, FirmwareVersion: a.firmwareVersion,
+		ActiveButtons: activeBtnsCopy, ActiveButtonsMask: a.activeButtonsMask,
+		History: historyCopy, ErrorMsg: a.errorMsg, SerialPort: a.serialPort, PortItems: portItemsCopy,
 	}
 }
 
@@ -193,9 +197,14 @@ func main() {
 }
 
 func run(w *app.Window) error {
-	// Загружаем конфигурацию
-	configPath := filepath.Join(getConfigDir(), configFileName)
+	// Keep ~/.hapticpad during the compatibility phase, but route all paths
+	// through one policy so LocalAppData migration is an independent adapter step.
+	paths := workspace.FromRoot(getConfigDir())
 	startupError := ""
+	if err := paths.Ensure(); err != nil {
+		startupError = fmt.Sprintf("Workspace initialization failed: %v", err)
+	}
+	configPath := paths.Keymap
 	keymap, err := config.LoadKeymap(configPath)
 	if err != nil {
 		startupError = fmt.Sprintf("Config load failed, in-memory defaults only: %v", err)
@@ -211,7 +220,7 @@ func run(w *app.Window) error {
 		}
 	}
 
-	layoutPath := filepath.Join(getConfigDir(), layoutFileName)
+	layoutPath := paths.Layout
 	layoutConfig, layoutErr := textinput.LoadLayout(layoutPath)
 	if layoutErr != nil {
 		if startupError != "" {
@@ -231,11 +240,24 @@ func run(w *app.Window) error {
 		startupError += fmt.Sprintf("Layout save failed: %v", err)
 	}
 
+	identity, hasIdentity, identityErr := device.LoadIdentity(paths.DeviceIdentity)
+	if identityErr != nil {
+		if startupError != "" {
+			startupError += " · "
+		}
+		startupError += fmt.Sprintf("Device identity load failed: %v", identityErr)
+	}
+	controller := connection.NewController(identity, baudRate)
+	connectionRuntime := connection.NewRuntime(controller)
+	connectionRuntime.Start()
+
 	th := createDarkTheme()
 	th.Shaper = text.NewShaper(text.NoSystemFonts(), text.WithCollection(gofont.Collection()))
 
 	appState := &App{
 		theme:                th,
+		connectionRuntime:    connectionRuntime,
+		workspace:            paths,
 		keymap:               keymap,
 		actionHandler:        handler.NewHandler(keymap),
 		resolver:             resolver,
@@ -252,7 +274,12 @@ func run(w *app.Window) error {
 		errorMsg:             startupError,
 	}
 
-	// Обновляем список портов
+	if hasIdentity {
+		connectionRuntime.StartRecovery(nil)
+	}
+
+	// Discovery never chooses the first COM implicitly. Explicit selection is
+	// authenticated by the KeyboardAZ v2 handshake; saved identity reconnects automatically.
 	appState.updatePortList()
 
 	// Запускаем обработку сообщений в отдельной горутине
@@ -268,9 +295,9 @@ func run(w *app.Window) error {
 			// Ждем завершения горутины обработки сообщений
 			<-appState.messageProcessorDone
 
-			// Закрываем reader
-			if appState.reader != nil {
-				appState.reader.Close()
+			// connection.Runtime is the sole owner of the live transport.
+			if appState.connectionRuntime != nil {
+				_ = appState.connectionRuntime.Close()
 			}
 
 			// Закрываем handler (останавливает worker-горутину)
@@ -292,266 +319,184 @@ func run(w *app.Window) error {
 	}
 }
 
-// startMessageProcessor обрабатывает сообщения из serial порта в отдельной горутине
+// startMessageProcessor consumes one stable application stream. Reconnect,
+// discovery backoff and session swapping are owned exclusively by connection.Runtime.
 func (a *App) startMessageProcessor() {
-	defer func() {
-		a.messageProcessorDone <- true
-	}()
+	defer func() { a.messageProcessorDone <- true }()
+	refreshTicker := time.NewTicker(time.Second)
+	defer refreshTicker.Stop()
 
-	reconnectTicker := time.NewTicker(1 * time.Second)
-	defer reconnectTicker.Stop()
-
+	var messages <-chan serial.ButtonMessage
+	var errorsCh <-chan error
+	if a.connectionRuntime != nil {
+		messages = a.connectionRuntime.Messages()
+		errorsCh = a.connectionRuntime.Errors()
+	}
 	for {
 		select {
 		case <-a.messageProcessorStop:
 			return
-		default:
-		}
-
-		a.mu.RLock()
-		r := a.reader
-		a.mu.RUnlock()
-
-		if r == nil {
-			select {
-			case <-a.messageProcessorStop:
-				return
-			case <-reconnectTicker.C:
-				a.updatePortList()
-				a.mu.RLock()
-				connected := a.connected
-				reconnecting := a.reconnecting
-				port := a.serialPort
-				a.mu.RUnlock()
-
-				if !connected && port != "" && port != "No ports available" {
-					if !reconnecting {
-						a.mu.Lock()
-						a.reconnecting = true
-						a.reconnectAttempts = 0
-						a.lastReconnectTime = time.Now().Add(-1 * time.Second)
-						a.mu.Unlock()
-					}
-					a.attemptReconnect()
-				}
+		case msg, ok := <-messages:
+			if !ok {
+				messages = nil
+				continue
 			}
-			continue
-		}
-
-		select {
-		case <-a.messageProcessorStop:
-			return
-		case msg, ok := <-r.Messages():
-			if ok {
-				a.handleMessage(msg)
-				a.mu.Lock()
-				if a.reconnecting {
-					a.reconnecting = false
-					a.reconnectAttempts = 0
-					a.connected = true
-					a.errorMsg = ""
-					log.Printf("Connection restored")
-				}
-				a.mu.Unlock()
+			a.handleMessage(msg)
+			a.syncConnectionState()
+		case err, ok := <-errorsCh:
+			if !ok {
+				errorsCh = nil
+				continue
 			}
-		case err, ok := <-r.Errors():
-			if ok {
-				log.Printf("Serial error: %v", err)
-				a.handleSerialError(err)
-			}
-		case <-reconnectTicker.C:
+			log.Printf("Connection runtime: %v", err)
+			a.mu.Lock()
+			a.errorMsg = err.Error()
+			a.mu.Unlock()
+			a.syncConnectionState()
+		case <-refreshTicker.C:
 			a.updatePortList()
-			a.attemptReconnect()
+			a.syncConnectionState()
 		}
 	}
 }
 
-func (a *App) handleSerialError(err error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.connected && !a.reconnecting && a.serialPort != "" {
-		a.reconnecting = true
-		a.connected = false
-		a.reconnectAttempts = 0
-		a.lastReconnectTime = time.Now()
-		a.errorMsg = fmt.Sprintf("Connection lost: %v. Reconnecting...", err)
-		log.Printf("Starting reconnection to %s", a.serialPort)
-
-		if a.reader != nil {
-			a.reader.Close()
-			a.reader = nil
-		}
-		go a.attemptReconnect()
-	} else if !a.reconnecting {
-		a.errorMsg = fmt.Sprintf("Serial error: %v", err)
+func (a *App) syncConnectionState() {
+	if a.connectionRuntime == nil {
+		return
 	}
+	snapshot := a.connectionRuntime.Snapshot()
+	connected := snapshot.HasSession && snapshot.Connection.State == connection.Ready
+	a.mu.Lock()
+	a.connected = connected
+	if snapshot.Current.PortName != "" {
+		a.serialPort = snapshot.Current.PortName
+	}
+	if connected {
+		a.errorMsg = ""
+	} else if snapshot.Connection.LastError != "" {
+		a.errorMsg = snapshot.Connection.LastError
+	}
+	a.mu.Unlock()
 }
 
 func (a *App) processMessages() {
 	// NOP: State transitions are handled thread-safely in background goroutines
 }
 
-func (a *App) attemptReconnect() {
-	a.mu.Lock()
-	if !a.reconnecting || a.connected || a.serialPort == "" || a.serialPort == "No ports available" || a.reconnectInProgress {
-		a.mu.Unlock()
-		return
-	}
-
-	if time.Since(a.lastReconnectTime) < 1*time.Second {
-		a.mu.Unlock()
-		return
-	}
-
-	if a.reconnectAttempts >= 30 {
-		a.reconnecting = false
-		a.errorMsg = "Failed to reconnect after 30 attempts. Please check hardware connection."
-		log.Printf("Reconnection failed after %d attempts", a.reconnectAttempts)
-		a.mu.Unlock()
-		return
-	}
-
-	a.reconnectAttempts++
-	a.lastReconnectTime = time.Now()
-	a.reconnectInProgress = true
-	port := a.serialPort
-	attempts := a.reconnectAttempts
-	a.mu.Unlock()
-
-	log.Printf("Reconnection attempt %d to %s", attempts, port)
-
-	reader, err := serial.NewReader(port, baudRate)
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.reconnectInProgress = false
-
-	if err != nil {
-		a.errorMsg = fmt.Sprintf("Reconnection attempt %d to %s failed: %v", attempts, port, err)
-		log.Printf("Reconnection attempt %d to %s failed: %v", attempts, port, err)
-		return
-	}
-
-	a.reader = reader
-	a.connected = true
-	a.reconnecting = false
-	a.reconnectAttempts = 0
-	a.errorMsg = ""
-	log.Printf("Successfully reconnected to %s", port)
-	_ = reader.WriteCommand("v2,cmd,status")
-}
-
 func (a *App) updatePortList() {
-	ports, err := serial.ListPorts()
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
+	candidates, err := device.Discover()
 	if err != nil {
-		log.Printf("Failed to list ports: %v", err)
-		a.portItems = []string{}
+		log.Printf("Failed to discover devices: %v", err)
+		a.mu.Lock()
+		a.portCandidates = nil
+		a.portItems = []string{"No ports available"}
+		a.mu.Unlock()
 		return
 	}
-	a.portItems = ports
-	if len(a.portItems) == 0 {
-		a.portItems = []string{"No ports available"}
-	}
-
-	portValid := false
-	for _, p := range a.portItems {
-		if p == a.serialPort && p != "No ports available" {
-			portValid = true
-			break
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return strings.ToLower(candidates[i].PortName) < strings.ToLower(candidates[j].PortName)
+	})
+	items := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.PortName != "" {
+			items = append(items, candidate.PortName)
 		}
 	}
-
-	if !portValid {
-		selected := ""
-		for _, p := range a.portItems {
-			if !strings.EqualFold(p, "COM1") && p != "No ports available" {
-				selected = p
-				break
-			}
-		}
-		if selected == "" && len(a.portItems) > 0 && a.portItems[0] != "No ports available" {
-			selected = a.portItems[0]
-		}
-		if selected != "" {
-			a.serialPort = selected
-			log.Printf("Auto-selected active port: %s", a.serialPort)
-		}
+	if len(items) == 0 {
+		items = []string{"No ports available"}
 	}
-
+	a.mu.Lock()
+	a.portCandidates = append(a.portCandidates[:0], candidates...)
+	a.portItems = items
 	if len(a.portButtons) < len(a.portItems) {
 		a.portButtons = append(a.portButtons, make([]widget.Clickable, len(a.portItems)-len(a.portButtons))...)
 	} else if len(a.portButtons) > len(a.portItems) {
 		a.portButtons = a.portButtons[:len(a.portItems)]
 	}
+	a.mu.Unlock()
 }
 
 func (a *App) sendDeviceCommand(cmd string) error {
-	a.mu.RLock()
-	r := a.reader
-	a.mu.RUnlock()
-
-	if r == nil {
+	if a.connectionRuntime == nil {
 		return fmt.Errorf("device not connected")
 	}
-	return r.WriteCommand(cmd)
+	return a.connectionRuntime.WriteCommand(cmd)
+}
+
+func (a *App) selectedCandidate(port string) (device.Candidate, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, candidate := range a.portCandidates {
+		if candidate.PortName == port {
+			return candidate, true
+		}
+	}
+	return device.Candidate{}, false
 }
 
 func (a *App) connect() {
-	a.mu.Lock()
+	a.mu.RLock()
 	port := a.serialPort
-	if port == "" {
-		a.errorMsg = "Please select a port"
+	runtime := a.connectionRuntime
+	identityPath := a.workspace.DeviceIdentity
+	a.mu.RUnlock()
+	if port == "" || port == "No ports available" {
+		a.mu.Lock()
+		a.errorMsg = "Please select a KeyboardAZ device"
 		a.mu.Unlock()
 		return
 	}
-
-	oldReader := a.reader
-	a.reader = nil
-	a.mu.Unlock()
-
-	if oldReader != nil {
-		oldReader.Close()
-	}
-
-	reader, err := serial.NewReader(port, baudRate)
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if err != nil {
-		a.errorMsg = fmt.Sprintf("Failed to connect to %s: %v", port, err)
-		log.Printf("Connection error: %v", err)
-		a.connected = false
+	if runtime == nil {
+		a.mu.Lock()
+		a.errorMsg = "Connection runtime is not initialized"
+		a.mu.Unlock()
 		return
 	}
-
-	a.reader = reader
-	a.connected = true
-	a.reconnecting = false
-	a.reconnectAttempts = 0
-	a.errorMsg = ""
-	log.Printf("Connected to %s", port)
-	_ = reader.WriteCommand("v2,cmd,status")
+	candidate, ok := a.selectedCandidate(port)
+	if !ok {
+		a.mu.Lock()
+		a.errorMsg = fmt.Sprintf("Selected device %s is no longer available", port)
+		a.mu.Unlock()
+		a.updatePortList()
+		return
+	}
+	a.mu.Lock()
+	a.errorMsg = fmt.Sprintf("Connecting to %s...", port)
+	a.mu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := runtime.ConnectExplicit(ctx, candidate); err != nil {
+			a.mu.Lock()
+			a.connected = false
+			a.errorMsg = fmt.Sprintf("Failed to connect to %s: %v", port, err)
+			a.mu.Unlock()
+			return
+		}
+		identity := runtime.Controller().Reference()
+		if identity.HasUSBPair() && identityPath != "" {
+			if err := device.SaveIdentity(identityPath, identity); err != nil {
+				log.Printf("Failed to persist device identity: %v", err)
+			}
+		}
+		a.syncConnectionState()
+		_ = runtime.WriteCommand("v2,cmd,status")
+	}()
 }
 
 func (a *App) disconnect() {
+	if a.connectionRuntime != nil {
+		if err := a.connectionRuntime.Disconnect(); err != nil {
+			log.Printf("Disconnect failed: %v", err)
+		}
+	}
 	a.mu.Lock()
-	oldReader := a.reader
-	a.reader = nil
 	a.connected = false
-	a.activeButtons = []int{}
+	a.activeButtons = nil
 	a.activeButtonsMask = 0
+	a.activeThumbMask = 0
 	a.errorMsg = ""
 	a.mu.Unlock()
-
-	if oldReader != nil {
-		oldReader.Close()
-	}
 	log.Println("Disconnected")
 }
 
@@ -594,13 +539,8 @@ func (a *App) handleMessage(msg serial.ButtonMessage) {
 			a.currentLanguage = msg.Language
 			a.currentMode = "letters"
 		}
-		if a.reconnecting {
-			a.reconnecting = false
-			a.reconnectAttempts = 0
-			a.connected = true
-			a.errorMsg = ""
-			log.Printf("Connection confirmed by device ready signal")
-		}
+		a.connected = true
+		a.errorMsg = ""
 		a.mu.Unlock()
 		if msg.Protocol == 2 {
 			_ = a.sendDeviceCommand("v2,cmd,status")

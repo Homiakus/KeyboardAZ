@@ -18,7 +18,6 @@ func TestAppHandleMessageUpdatesStateAndHistory(t *testing.T) {
 		history:       make([]HistoryEntry, 0, 2),
 		activeButtons: []int{},
 		currentLayer:  0,
-		reconnecting:  false,
 		errorMsg:      "",
 	}
 	defer appState.actionHandler.Close()
@@ -59,13 +58,12 @@ func TestAppHandleMessageUpdatesStateAndHistory(t *testing.T) {
 	}
 }
 
-func TestAppHandleMessageReadyResetsReconnectState(t *testing.T) {
+func TestAppHandleMessageReadyMarksConnected(t *testing.T) {
 	appState := &App{
 		keymap:        config.DefaultKeymap(),
 		actionHandler: handler.NewHandler(&config.KeymapConfig{Layers: map[int]config.LayerConfig{}}),
 		maxHistory:    5,
 		history:       make([]HistoryEntry, 0, 5),
-		reconnecting:  true,
 		connected:     false,
 		errorMsg:      "Connection lost",
 	}
@@ -75,9 +73,6 @@ func TestAppHandleMessageReadyResetsReconnectState(t *testing.T) {
 
 	if !appState.connected {
 		t.Fatalf("expected app to become connected")
-	}
-	if appState.reconnecting {
-		t.Fatalf("expected reconnecting flag to reset")
 	}
 	if appState.errorMsg != "" {
 		t.Fatalf("expected errorMsg to be cleared, got %q", appState.errorMsg)
