@@ -28,7 +28,7 @@ func newFakeSession() *fakeSession {
 }
 
 func (f *fakeSession) Messages() <-chan serial.ButtonMessage { return f.messages }
-func (f *fakeSession) Errors() <-chan error                 { return f.errors }
+func (f *fakeSession) Errors() <-chan error                  { return f.errors }
 func (f *fakeSession) WriteCommand(command string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
