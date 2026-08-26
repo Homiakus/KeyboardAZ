@@ -65,17 +65,26 @@ func SelectExact(reference Identity, candidates []Candidate) (Candidate, bool) {
 	return match, found
 }
 
-// HandshakeCandidates narrows discovery to the same VID/PID. The caller must
-// still perform the KeyboardAZ protocol handshake before accepting a device.
+// HandshakeCandidates narrows discovery to the same VID/PID. If the saved
+// identity has a serial number, a candidate exposing a *different* serial is
+// rejected rather than silently weakening identity. A candidate with no serial
+// may still be probed because some OS/driver combinations omit that metadata.
+// The caller must perform the KeyboardAZ protocol handshake before accepting it.
 func HandshakeCandidates(reference Identity, candidates []Candidate) []Candidate {
+	reference = reference.Normalized()
 	if !reference.HasUSBPair() {
 		return nil
 	}
 	result := make([]Candidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		if reference.SameUSBProduct(candidate.Identity) {
-			result = append(result, candidate)
+		identity := candidate.Identity.Normalized()
+		if !reference.SameUSBProduct(identity) {
+			continue
 		}
+		if reference.SerialNumber != "" && identity.SerialNumber != "" && reference.SerialNumber != identity.SerialNumber {
+			continue
+		}
+		result = append(result, candidate)
 	}
 	return result
 }
