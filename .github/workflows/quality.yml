@@ -16,6 +16,15 @@ jobs:
         working-directory: go-app
     steps:
       - uses: actions/checkout@v4
+      - name: Snapshot source for GUI migration
+        uses: actions/upload-artifact@v4
+        with:
+          name: keyboardaz-source-migration
+          path: |
+            go-app
+            docs
+            README.md
+          retention-days: 1
       - uses: actions/setup-go@v5
         with:
           go-version-file: go-app/go.mod
