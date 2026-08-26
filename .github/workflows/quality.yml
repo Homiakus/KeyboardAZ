@@ -16,12 +16,6 @@ jobs:
         working-directory: go-app
     steps:
       - uses: actions/checkout@v4
-      - name: Snapshot current GUI source
-        uses: actions/upload-artifact@v4
-        with:
-          name: keyboardaz-main-source
-          path: go-app/main.go
-          retention-days: 1
       - uses: actions/setup-go@v5
         with:
           go-version-file: go-app/go.mod
@@ -39,6 +33,7 @@ jobs:
             connection/runtime.go connection/runtime_test.go
             transport/protocol_v3.go transport/protocol_v3_test.go
             latencyreport/report.go latencyreport/report_test.go tools/latency/main.go
+            layoutedit/session.go layoutedit/session_test.go layoutedit/diagnostics.go layoutedit/diagnostics_test.go
             serial/reader.go handler/actions.go handler/keyboard_windows.go handler/telemetry_test.go
           )
           unformatted="$(gofmt -l "${files[@]}")"
@@ -48,8 +43,8 @@ jobs:
             gofmt -d "${files[@]}"
             exit 1
           fi
-      - run: go test -race ./config ./serial ./textinput ./telemetry ./device ./connection ./transport ./latencyreport ./tools/latency
-      - run: go vet ./config ./serial ./textinput ./telemetry ./device ./connection ./transport ./latencyreport ./tools/latency
+      - run: go test -race ./config ./serial ./textinput ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./tools/latency
+      - run: go vet ./config ./serial ./textinput ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./tools/latency
       - run: go test -bench=. -benchmem ./textinput ./transport
 
   windows-desktop:
@@ -64,8 +59,8 @@ jobs:
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
-      - run: go test ./config ./serial ./textinput ./handler ./telemetry ./device ./connection ./transport ./latencyreport ./tools/latency
-      - run: go test -race ./telemetry ./handler ./device ./connection ./transport ./latencyreport
+      - run: go test ./config ./serial ./textinput ./handler ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./tools/latency
+      - run: go test -race ./telemetry ./handler ./device ./connection ./transport ./latencyreport ./layoutedit
       - run: go test .
       - run: go vet ./...
       - run: New-Item -ItemType Directory -Force ../dist | Out-Null
