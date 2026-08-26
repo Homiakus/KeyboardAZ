@@ -38,15 +38,15 @@ type Health struct {
 	protocol int
 	firmware string
 
-	transportRxTotal   uint64
-	lastSequence       uint32
+	transportRxTotal    uint64
+	lastSequence        uint32
 	sequenceInitialized bool
-	sequenceGaps       uint64
-	sequenceDuplicates uint64
-	sequenceEpochs     uint64
-	parseErrors        uint64
-	reconnects         uint64
-	reconnectFailures  uint64
+	sequenceGaps        uint64
+	sequenceDuplicates  uint64
+	sequenceEpochs      uint64
+	parseErrors         uint64
+	reconnects          uint64
+	reconnectFailures   uint64
 
 	realtimeQueueDepth         int
 	realtimeQueueHighWatermark int
