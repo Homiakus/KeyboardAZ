@@ -2,6 +2,7 @@ package layoutedit
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -52,7 +53,7 @@ func (s *Session) Dirty() bool {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return !layoutsEqual(s.baseline, s.draft)
+	return !reflect.DeepEqual(s.baseline, s.draft)
 }
 
 func (s *Session) CanUndo() bool {
@@ -272,7 +273,7 @@ func (s *Session) mutate(fn func(*textinput.LayoutConfig) error) error {
 	if err := textinput.ValidateLayout(working); err != nil {
 		return err
 	}
-	if layoutsEqual(before, working) {
+	if reflect.DeepEqual(before, working) {
 		return nil
 	}
 	s.undo = appendBounded(s.undo, before, s.limit)
@@ -284,21 +285,10 @@ func (s *Session) mutate(fn func(*textinput.LayoutConfig) error) error {
 func appendBounded(history []*textinput.LayoutConfig, value *textinput.LayoutConfig, limit int) []*textinput.LayoutConfig {
 	history = append(history, value)
 	if limit > 0 && len(history) > limit {
-		copy(history, history[len(history)-limit:])
-		history = history[:limit]
+		start := len(history) - limit
+		trimmed := make([]*textinput.LayoutConfig, limit)
+		copy(trimmed, history[start:])
+		return trimmed
 	}
 	return history
-}
-
-func layoutsEqual(a, b *textinput.LayoutConfig) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	// Layouts are small configuration objects. Comparing their canonical JSON
-	// representation keeps the editor layer independent from private fields.
-	return canonicalLayout(a) == canonicalLayout(b)
-}
-
-func canonicalLayout(layout *textinput.LayoutConfig) string {
-	return fmt.Sprintf("%#v", layout)
 }
