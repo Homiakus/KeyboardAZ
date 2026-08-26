@@ -18,6 +18,8 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
+	"hapticpad-go-app/telemetry"
+
 	"golang.org/x/sys/windows"
 )
 
@@ -179,9 +181,12 @@ func sendInputs(inputs []input) bool {
 		unsafe.Sizeof(inputs[0]),
 	)
 	if inserted != uintptr(len(inputs)) {
-		log.Printf("SendInput inserted %d/%d events: %v", inserted, len(inputs), callErr)
+		err := fmt.Errorf("SendInput inserted %d/%d events: %v", inserted, len(inputs), callErr)
+		telemetry.Process().RecordSendInput(false, err)
+		log.Print(err)
 		return false
 	}
+	telemetry.Process().RecordSendInput(true, nil)
 	return true
 }
 
