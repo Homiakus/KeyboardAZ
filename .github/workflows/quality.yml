@@ -20,10 +20,15 @@ jobs:
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
-      - name: Check formatting of new desktop lifecycle files
+      - name: Check formatting of critical Go files
         shell: bash
         run: |
-          files=(tray_policy.go tray_policy_test.go tray_windows.go)
+          files=(
+            tray_policy.go tray_policy_test.go tray_windows.go
+            telemetry/health.go telemetry/latency.go telemetry/health_test.go
+            device/identity.go device/discovery.go device/identity_test.go
+            serial/reader.go handler/actions.go handler/keyboard_windows.go handler/telemetry_test.go
+          )
           unformatted="$(gofmt -l "${files[@]}")"
           if [[ -n "$unformatted" ]]; then
             echo "Files requiring gofmt:"
@@ -31,8 +36,8 @@ jobs:
             gofmt -d "${files[@]}"
             exit 1
           fi
-      - run: go test -race ./config ./serial ./textinput
-      - run: go vet ./config ./serial ./textinput
+      - run: go test -race ./config ./serial ./textinput ./telemetry ./device
+      - run: go vet ./config ./serial ./textinput ./telemetry ./device
       - run: go test -bench=. -benchmem ./textinput
 
   windows-desktop:
@@ -47,7 +52,8 @@ jobs:
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
-      - run: go test ./config ./serial ./textinput ./handler
+      - run: go test ./config ./serial ./textinput ./handler ./telemetry ./device
+      - run: go test -race ./telemetry ./handler
       - run: go test .
       - run: go vet ./...
       - run: New-Item -ItemType Directory -Force ../dist | Out-Null
