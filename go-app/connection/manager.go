@@ -52,6 +52,7 @@ type Snapshot struct {
 	Attempts    int
 	NextAttempt time.Time
 	LastError   string
+	Recovering  bool
 }
 
 // Manager owns reconnect policy only. Opening ports, enumerating USB devices
@@ -63,6 +64,7 @@ type Manager struct {
 	attempts    int
 	nextAttempt time.Time
 	lastError   string
+	recovering  bool
 }
 
 func NewManager() *Manager {
@@ -80,6 +82,7 @@ func (m *Manager) Snapshot() Snapshot {
 		Attempts:    m.attempts,
 		NextAttempt: m.nextAttempt,
 		LastError:   m.lastError,
+		Recovering:  m.recovering,
 	}
 }
 
@@ -113,18 +116,21 @@ func (m *Manager) BeginHandshake() {
 	m.mu.Unlock()
 }
 
-// MarkReady completes a successful manual connection or reconnect. Attempt
-// state is reset only after transport + KeyboardAZ handshake succeeded.
+// MarkReady completes a successful manual connection or reconnect. Recovery
+// ownership is tracked independently from the visible state because a successful
+// first retry has already transitioned through Opening and Handshaking by the
+// time this method is called.
 func (m *Manager) MarkReady() {
 	if m == nil {
 		return
 	}
 	m.mu.Lock()
-	wasRecovery := m.attempts > 0 || m.state == Reconnecting || m.state == Degraded
+	wasRecovery := m.recovering
 	m.state = Ready
 	m.attempts = 0
 	m.nextAttempt = time.Time{}
 	m.lastError = ""
+	m.recovering = false
 	m.mu.Unlock()
 
 	if wasRecovery {
@@ -143,6 +149,7 @@ func (m *Manager) MarkLost(now time.Time, err error) {
 	m.state = Reconnecting
 	m.attempts = 0
 	m.nextAttempt = now.Add(retryDelay(0))
+	m.recovering = true
 	if err != nil {
 		m.lastError = err.Error()
 	}
@@ -189,6 +196,7 @@ func (m *Manager) MarkAttemptFailed(now time.Time, err error) {
 		return
 	}
 	m.mu.Lock()
+	m.recovering = true
 	m.attempts++
 	attempts := m.attempts
 	if err != nil {
@@ -215,6 +223,7 @@ func (m *Manager) MarkDetached() {
 	m.attempts = 0
 	m.nextAttempt = time.Time{}
 	m.lastError = ""
+	m.recovering = false
 	m.mu.Unlock()
 }
 
