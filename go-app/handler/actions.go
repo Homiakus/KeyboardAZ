@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"hapticpad-go-app/config"
+	"hapticpad-go-app/telemetry"
 )
 
 const (
@@ -25,8 +26,11 @@ const (
 )
 
 // ActionRequest is copied into a queue so callers may safely reuse their action.
+// EnqueuedAt is operational timing metadata only; action content is never
+// copied into telemetry.
 type ActionRequest struct {
-	Action config.Action
+	Action     config.Action
+	EnqueuedAt time.Time
 }
 
 // Handler separates latency-sensitive keyboard input from commands and macro
@@ -85,6 +89,9 @@ func newHandlerWithDeps(
 	return h
 }
 
+// Health returns the process-level privacy-safe input pipeline snapshot.
+func (h *Handler) Health() telemetry.HealthSnapshot { return telemetry.Process().Snapshot() }
+
 // startInputWorker owns keyboard injection. User-generated realtime events are
 // always checked before macro-generated steps. A combo is executed atomically
 // by this worker, so its modifier sequence cannot be split by another stroke.
@@ -103,6 +110,7 @@ func (h *Handler) startInputWorker() {
 		case <-h.closed:
 			return
 		case req := <-h.realtimeQueue:
+			h.observeRealtimeDispatch(req)
 			h.executeInputAction(req.Action)
 			continue
 		default:
@@ -112,18 +120,28 @@ func (h *Handler) startInputWorker() {
 		case <-h.closed:
 			return
 		case req := <-h.realtimeQueue:
+			h.observeRealtimeDispatch(req)
 			h.executeInputAction(req.Action)
 		case macroReq := <-h.macroStepQueue:
 			// A physical event may have arrived while select was choosing a
 			// branch. Give it one final priority check before the macro step.
 			select {
 			case realtimeReq := <-h.realtimeQueue:
+				h.observeRealtimeDispatch(realtimeReq)
 				h.executeInputAction(realtimeReq.Action)
 			default:
 			}
 			h.executeInputAction(macroReq.Action)
 		}
 	}
+}
+
+func (h *Handler) observeRealtimeDispatch(req ActionRequest) {
+	age := time.Duration(0)
+	if !req.EnqueuedAt.IsZero() {
+		age = time.Since(req.EnqueuedAt)
+	}
+	telemetry.Process().ObserveRealtimeDispatch(age, len(h.realtimeQueue))
 }
 
 func (h *Handler) startBackgroundWorker() {
@@ -178,9 +196,17 @@ func (h *Handler) enqueue(queue chan ActionRequest, action config.Action) bool {
 	select {
 	case <-h.closed:
 		return false
-	case queue <- ActionRequest{Action: action}:
+	case queue <- ActionRequest{Action: action, EnqueuedAt: time.Now()}:
 		return true
 	}
+}
+
+func (h *Handler) enqueueRealtime(action config.Action) bool {
+	if !h.enqueue(h.realtimeQueue, action) {
+		return false
+	}
+	telemetry.Process().ObserveRealtimeEnqueue(len(h.realtimeQueue))
+	return true
 }
 
 func (h *Handler) enqueueMacroStep(action config.Action) bool {
@@ -191,7 +217,7 @@ func (h *Handler) tryEnqueueBackground(action config.Action) bool {
 	select {
 	case <-h.closed:
 		return false
-	case h.backgroundQueue <- ActionRequest{Action: action}:
+	case h.backgroundQueue <- ActionRequest{Action: action, EnqueuedAt: time.Now()}:
 		return true
 	default:
 		// Background actions are intentionally shed before they are allowed
@@ -214,7 +240,7 @@ func (h *Handler) HandleAction(action *config.Action) {
 		h.tryEnqueueBackground(copied)
 		return
 	}
-	h.enqueue(h.realtimeQueue, copied)
+	h.enqueueRealtime(copied)
 }
 
 // HandleMessage processes a normalized legacy protocol button mask.
