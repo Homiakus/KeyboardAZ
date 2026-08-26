@@ -19,13 +19,13 @@ type ModeDiagnostics struct {
 }
 
 type Diagnostics struct {
-	Profiles       int
-	TotalBindings  int
-	Missing        int
-	Duplicates     int
-	Background     int
-	Modes          []ModeDiagnostics
-	MissingThumbs  []string
+	Profiles      int
+	TotalBindings int
+	Missing       int
+	Duplicates    int
+	Background    int
+	Modes         []ModeDiagnostics
+	MissingThumbs []string
 }
 
 // Analyze produces presentation-neutral diagnostics that the UI can render as
