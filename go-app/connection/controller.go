@@ -164,15 +164,24 @@ func (c *Controller) TakePending() []appserial.ButtonMessage {
 
 // ConnectExplicit validates a user-selected port with the KeyboardAZ protocol
 // before adopting its USB identity. Explicit selection is the only path allowed
-// when discovery is ambiguous.
+// when discovery is ambiguous. A failed switch leaves an existing healthy
+// session untouched rather than disconnecting the user from the working device.
 func (c *Controller) ConnectExplicit(ctx context.Context, candidate device.Candidate) error {
 	if c == nil {
 		return errors.New("nil connection controller")
 	}
+	before := c.Snapshot()
 	c.manager.BeginOpen()
 	session, handshake, err := c.openAndHandshake(ctx, candidate)
 	if err != nil {
-		c.manager.MarkDetached()
+		switch {
+		case before.HasSession && before.Connection.State == Ready:
+			c.manager.MarkReady()
+		case before.Connection.Recovering:
+			c.manager.MarkLost(c.now(), err)
+		default:
+			c.manager.MarkDetached()
+		}
 		return err
 	}
 
