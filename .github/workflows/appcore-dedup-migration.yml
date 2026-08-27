@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/appcore-dedup-migration.yml
       - .github/scripts/appcore_dedup.py
+      - .github/scripts/appcore_dedup_consumers.py
 
 permissions:
   contents: write
@@ -25,7 +26,8 @@ jobs:
         shell: pwsh
         run: |
           python .github/scripts/appcore_dedup.py
-          gofmt -w go-app/main.go go-app/main_state_test.go
+          python .github/scripts/appcore_dedup_consumers.py
+          gofmt -w go-app/main.go go-app/main_state_test.go go-app/main_test.go go-app/configurator.go
       - name: Verify duplicate semantic state is gone
         shell: pwsh
         run: |
@@ -42,6 +44,7 @@ jobs:
             if (Select-String -Path go-app/main.go -SimpleMatch -CaseSensitive $declaration) { throw "App still owns semantic field declaration: $declaration" }
           }
           if (-not (Select-String -Path go-app/main.go -SimpleMatch -CaseSensitive 'CurrentLanguage: semantic.Language')) { throw 'snapshot is not appcore-backed' }
+          if (Select-String -Path go-app/configurator.go -SimpleMatch -CaseSensitive 'a.activeButtonsMask') { throw 'configurator still reads shell semantic cache' }
       - name: Test shell and core under race detector
         working-directory: go-app
         run: go test -race ./appcore ./protocol ./textinput ./architecture .
@@ -61,7 +64,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add go-app/main.go go-app/main_state_test.go
+          git add go-app/main.go go-app/main_state_test.go go-app/main_test.go go-app/configurator.go
           if (git diff --cached --quiet) { throw 'semantic state deduplication produced no changes' }
           git commit -m "refactor: make appcore the semantic state authority"
           git push origin HEAD:main
