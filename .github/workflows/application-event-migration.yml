@@ -1,0 +1,65 @@
+name: application-event-migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/application-event-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Migrate application shell to protocol.Event
+        shell: pwsh
+        run: |
+          $path = 'go-app/main.go'
+          $source = Get-Content $path -Raw
+          if (-not $source.Contains('"hapticpad-go-app/protocol"')) {
+            $source = $source.Replace('"hapticpad-go-app/handler"', '"hapticpad-go-app/handler"' + [Environment]::NewLine + "`t`"hapticpad-go-app/protocol`"")
+          }
+          $replacements = @{
+            'var messages <-chan serial.ButtonMessage' = 'var messages <-chan protocol.Event'
+            'func (a *App) handleMessage(msg serial.ButtonMessage)' = 'func (a *App) handleMessage(msg protocol.Event)'
+            'decision := a.coreState.ApplyEvent(msg.Event())' = 'decision := a.coreState.ApplyEvent(msg)'
+          }
+          foreach ($entry in $replacements.GetEnumerator()) {
+            if (-not $source.Contains($entry.Key)) { throw "expected source fragment not found: $($entry.Key)" }
+            $source = $source.Replace($entry.Key, $entry.Value)
+          }
+          Set-Content -Path $path -Value $source -Encoding utf8
+          gofmt -w $path
+      - name: Verify application event boundary
+        shell: pwsh
+        run: |
+          if (Select-String -Path go-app/main.go -SimpleMatch 'serial.ButtonMessage') { throw 'application shell still exposes serial.ButtonMessage' }
+          if (-not (Select-String -Path go-app/main.go -SimpleMatch 'func (a *App) handleMessage(msg protocol.Event)')) { throw 'application shell does not consume protocol.Event directly' }
+          if (-not (Select-String -Path go-app/main.go -SimpleMatch 'return serial.NewReader(portName, baudRate)')) { throw 'CDC adapter composition was accidentally removed' }
+      - name: Test Windows application
+        working-directory: go-app
+        run: go test ./...
+      - name: Vet application
+        working-directory: go-app
+        run: go vet ./...
+      - name: Build Windows application
+        working-directory: go-app
+        run: go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../dist/KeyboardAZ.exe .
+      - name: Commit application event migration
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add go-app/main.go
+          if (git diff --cached --quiet) { throw 'migration produced no changes' }
+          git commit -m "refactor: consume protocol events directly in application shell"
+          git push origin HEAD:main
