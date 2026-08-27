@@ -1,8 +1,9 @@
 package main
 
 import (
-	"strings"
 	"testing"
+
+	"hapticpad-go-app/workspace"
 )
 
 func TestCreateDarkThemeAndHelpers(t *testing.T) {
@@ -21,7 +22,11 @@ func TestCreateDarkThemeAndHelpers(t *testing.T) {
 	if configDir == "" {
 		t.Fatalf("expected config dir to be non-empty")
 	}
-	if !strings.Contains(strings.ToLower(configDir), "hapticpad") {
-		t.Fatalf("expected config dir to include hapticpad, got %q", configDir)
+	canonical, err := workspace.Default()
+	if err != nil {
+		t.Fatalf("resolve canonical workspace: %v", err)
+	}
+	if configDir != canonical.Root {
+		t.Fatalf("expected canonical config dir %q, got %q", canonical.Root, configDir)
 	}
 }

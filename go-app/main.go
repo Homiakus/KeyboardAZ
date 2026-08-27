@@ -14,7 +14,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -204,23 +203,17 @@ func main() {
 }
 
 func run(w *app.Window) error {
-	// Keep ~/.hapticpad during the compatibility phase, but route all paths
-	// through one policy so LocalAppData migration is an independent adapter step.
-	paths := workspace.FromRoot(getConfigDir())
-	startupError := ""
-	if err := paths.Ensure(); err != nil {
-		startupError = fmt.Sprintf("Workspace initialization failed: %v", err)
-	}
+	paths, startupError := prepareWorkspace()
 	configPath := paths.Keymap
 	keymap, err := config.LoadKeymap(configPath)
 	if err != nil {
-		startupError = fmt.Sprintf("Config load failed, in-memory defaults only: %v", err)
+		startupError = appendStartupError(startupError, fmt.Sprintf("Config load failed, in-memory defaults only: %v", err))
 		log.Printf("Failed to load keymap %s, using in-memory defaults only: %v", configPath, err)
 		keymap = config.DefaultKeymap()
 	} else {
 		// Сохраняем конфигурацию в нормализованном виде и создаем файл, если его не было.
 		if err := config.SaveKeymap(keymap, configPath); err != nil {
-			startupError = fmt.Sprintf("Config save failed: %v", err)
+			startupError = appendStartupError(startupError, fmt.Sprintf("Config save failed: %v", err))
 			log.Printf("Failed to save keymap: %v", err)
 		} else {
 			log.Printf("Configuration file: %s", configPath)
@@ -1164,9 +1157,5 @@ func openConfigFile(filepath string) error {
 }
 
 func getConfigDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "."
-	}
-	return filepath.Join(home, ".hapticpad")
+	return canonicalConfigDir()
 }
