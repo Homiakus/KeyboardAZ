@@ -69,9 +69,80 @@ func TestSummarizeSkipsMissingTimingStages(t *testing.T) {
 	}
 }
 
-func TestParseCSVRejectsSchemaDrift(t *testing.T) {
-	_, err := ParseCSV(strings.NewReader("sequence,bad\n1,2\n"))
-	if err == nil {
+func TestSummarizeCountsInvalidClockOrdering(t *testing.T) {
+	summary := Summarize([]Sample{
+		{Sequence: 1, T2HostRxNS: 200, T3SendInputNS: 100, T0FixtureNS: 400, T4FixtureNS: 300},
+	})
+	if summary.InvalidHostTiming != 1 || summary.InvalidFixtureTiming != 1 {
+		t.Fatalf("invalid timings were hidden: %+v", summary)
+	}
+	if summary.HostDispatch.Count != 0 || summary.FixtureE2E.Count != 0 {
+		t.Fatalf("invalid timings entered distributions: %+v", summary)
+	}
+}
+
+func TestEvaluateGatePassesCompleteSeriesWithinBudgets(t *testing.T) {
+	summary := Summary{
+		Samples:      10000,
+		HostDispatch: Distribution{Count: 10000, P95: 800 * time.Microsecond, P99: 950 * time.Microsecond},
+		FixtureE2E:   Distribution{Count: 10000, P95: 7 * time.Millisecond, P99: 9 * time.Millisecond},
+	}
+	result := EvaluateGate(summary, GateConfig{
+		MinSamples:        10000,
+		RequireHostTiming: true,
+		RequireFixtureE2E: true,
+		MaxHostP95:        time.Millisecond,
+		MaxHostP99:        2 * time.Millisecond,
+		MaxFixtureP95:     8 * time.Millisecond,
+		MaxFixtureP99:     10 * time.Millisecond,
+	})
+	if !result.Passed || len(result.Failures) != 0 {
+		t.Fatalf("valid HIL series failed gate: %+v", result)
+	}
+}
+
+func TestEvaluateGateExplainsCorrectnessCoverageAndLatencyFailures(t *testing.T) {
+	summary := Summary{
+		Samples:              9999,
+		SequenceGaps:         1,
+		SequenceDuplicates:   2,
+		SequenceOutOfOrder:   3,
+		InvalidHostTiming:    1,
+		InvalidFixtureTiming: 1,
+		HostDispatch:         Distribution{Count: 9998, P95: 2 * time.Millisecond},
+		FixtureE2E:           Distribution{Count: 9997, P99: 15 * time.Millisecond},
+	}
+	result := EvaluateGate(summary, GateConfig{
+		MinSamples:        10000,
+		RequireHostTiming: true,
+		RequireFixtureE2E: true,
+		MaxHostP95:        time.Millisecond,
+		MaxFixtureP99:     10 * time.Millisecond,
+	})
+	if result.Passed {
+		t.Fatal("invalid HIL series passed gate")
+	}
+	if len(result.Failures) < 9 {
+		t.Fatalf("gate did not explain all failure classes: %+v", result.Failures)
+	}
+}
+
+func TestParseCSVRejectsSchemaDriftAndInvalidSemanticFields(t *testing.T) {
+	if _, err := ParseCSV(strings.NewReader("sequence,bad\n1,2\n")); err == nil {
 		t.Fatal("expected schema validation error")
+	}
+
+	header := "sequence,t0_fixture_ns,t1_firmware_us,t2_host_rx_ns,t3_sendinput_ns,t4_fixture_ns,event_type,button,modifiers\n"
+	cases := []string{
+		"0,0,0,1,2,0,stroke,1,0\n",
+		"1,0,0,1,2,0,,1,0\n",
+		"1,0,0,1,2,0,stroke,22,0\n",
+		"1,0,0,1,2,0,stroke,1,16\n",
+		"1,-1,0,1,2,0,stroke,1,0\n",
+	}
+	for _, row := range cases {
+		if _, err := ParseCSV(strings.NewReader(header + row)); err == nil {
+			t.Fatalf("expected invalid row rejection: %q", row)
+		}
 	}
 }
