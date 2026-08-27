@@ -25,8 +25,8 @@ jobs:
           grep -F 'if msg.Protocol >= 2 {' go-app/main.go
           grep -F 'a.handleSemanticProtocolMessage(msg)' go-app/main.go
           grep -F 'Ignoring unsupported modern semantic event' go-app/main.go
-          if grep -F 'if msg.Protocol == 2 {' go-app/main.go; then
-            echo 'legacy protocol-specific semantic dispatch remains' >&2
+          if grep -F $'if msg.Protocol == 2 {\n\t\tswitch msg.Type {' go-app/main.go; then
+            echo 'old protocol-v2 semantic switch remains' >&2
             exit 1
           fi
       - uses: actions/setup-go@v7
