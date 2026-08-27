@@ -56,7 +56,15 @@ func MigrateValidated(source, target workspace.Paths) (Result, error) {
 }
 
 func migrateLayout(source, target string) (bool, error) {
-	if !sourceExists(source) || targetExists(target) {
+	sourcePresent, err := exists(source)
+	if err != nil {
+		return false, fmt.Errorf("inspect source: %w", err)
+	}
+	targetPresent, err := exists(target)
+	if err != nil {
+		return false, fmt.Errorf("inspect target: %w", err)
+	}
+	if !sourcePresent || targetPresent {
 		return false, nil
 	}
 	layout, err := textinput.LoadLayout(source)
@@ -70,7 +78,15 @@ func migrateLayout(source, target string) (bool, error) {
 }
 
 func migrateKeymap(source, target string) (bool, error) {
-	if !sourceExists(source) || targetExists(target) {
+	sourcePresent, err := exists(source)
+	if err != nil {
+		return false, fmt.Errorf("inspect source: %w", err)
+	}
+	targetPresent, err := exists(target)
+	if err != nil {
+		return false, fmt.Errorf("inspect target: %w", err)
+	}
+	if !sourcePresent || targetPresent {
 		return false, nil
 	}
 	keymap, err := config.LoadKeymap(source)
@@ -84,7 +100,15 @@ func migrateKeymap(source, target string) (bool, error) {
 }
 
 func migrateIdentity(source, target string) (bool, error) {
-	if !sourceExists(source) || targetExists(target) {
+	sourcePresent, err := exists(source)
+	if err != nil {
+		return false, fmt.Errorf("inspect source: %w", err)
+	}
+	targetPresent, err := exists(target)
+	if err != nil {
+		return false, fmt.Errorf("inspect target: %w", err)
+	}
+	if !sourcePresent || targetPresent {
 		return false, nil
 	}
 	identity, found, err := device.LoadIdentity(source)
@@ -100,12 +124,14 @@ func migrateIdentity(source, target string) (bool, error) {
 	return true, nil
 }
 
-func sourceExists(path string) bool {
+func exists(path string) (bool, error) {
 	_, err := os.Stat(path)
-	return err == nil
-}
-
-func targetExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, os.ErrNotExist):
+		return false, nil
+	default:
+		return false, err
+	}
 }
