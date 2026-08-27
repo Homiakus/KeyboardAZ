@@ -13,8 +13,6 @@ permissions:
 jobs:
   migrate:
     runs-on: windows-latest
-    env:
-      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v7
         with:
@@ -23,13 +21,17 @@ jobs:
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
+      - name: Verify pinned release toolchain
+        working-directory: go-app
+        shell: pwsh
+        run: go version | Select-String 'go1.26.7'
       - name: Upgrade vulnerable transitive modules
         working-directory: go-app
         shell: pwsh
         run: |
           go get golang.org/x/text@v0.39.0 golang.org/x/image@v0.43.0 golang.org/x/net@v0.55.0
           go mod tidy
-          go list -m golang.org/x/text golang.org/x/image golang.org/x/net
+          go list -m golang.org/x/text golang.org/x/image golang.org/x/net golang.org/x/sys
       - name: Test Windows application
         working-directory: go-app
         shell: pwsh
