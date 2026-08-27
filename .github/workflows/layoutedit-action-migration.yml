@@ -1,0 +1,95 @@
+name: layoutedit-action-migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/layoutedit-action-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Move layout editor action semantics to domain package
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          replacements = {
+              'config.NormalizeAction': 'domainaction.Normalize',
+              'config.ValidateAction': 'domainaction.Validate',
+              'config.CloneAction': 'domainaction.Clone',
+              'config.ActionCommand': 'domainaction.Command',
+              'config.ActionMacro': 'domainaction.Macro',
+              'config.ActionCombo': 'domainaction.Combo',
+              'config.ActionText': 'domainaction.Text',
+              'config.ActionKey': 'domainaction.Key',
+              'config.ActionSummary': 'domainaction.Summary',
+              'config.Action': 'domainaction.Action',
+          }
+
+          for name in ['session.go', 'catalog.go', 'diagnostics.go']:
+              path = Path('go-app/layoutedit') / name
+              s = path.read_text(encoding='utf-8')
+              marker = '\t"hapticpad-go-app/config"\n'
+              if marker not in s:
+                  raise SystemExit(f'{name}: config import marker not found')
+              s = s.replace(marker, '\tdomainaction "hapticpad-go-app/action"\n', 1)
+              for old in sorted(replacements, key=len, reverse=True):
+                  s = s.replace(old, replacements[old])
+              path.write_text(s, encoding='utf-8')
+
+          path = Path('go-app/layoutedit/preview.go')
+          s = path.read_text(encoding='utf-8')
+          marker = '\t"hapticpad-go-app/config"\n'
+          if marker not in s:
+              raise SystemExit('preview.go: config import marker not found')
+          s = s.replace(marker, '\tdomainaction "hapticpad-go-app/action"\n\t"hapticpad-go-app/config"\n', 1)
+          for old in sorted(replacements, key=len, reverse=True):
+              s = s.replace(old, replacements[old])
+          path.write_text(s, encoding='utf-8')
+          '@ | python -
+          gofmt -w go-app/layoutedit/session.go go-app/layoutedit/catalog.go go-app/layoutedit/diagnostics.go go-app/layoutedit/preview.go
+      - name: Verify layout editor dependency split
+        shell: pwsh
+        run: |
+          $production = Get-ChildItem go-app/layoutedit -Filter *.go | Where-Object { $_.Name -notlike '*_test.go' }
+          if ($production | Select-String -SimpleMatch 'config.Action') { throw 'layoutedit production code still uses config.Action' }
+          foreach ($name in @('session.go','catalog.go','diagnostics.go')) {
+            if (Select-String -Path (Join-Path 'go-app/layoutedit' $name) -SimpleMatch 'hapticpad-go-app/config') { throw "$name still imports config" }
+          }
+          if (-not (Select-String -Path go-app/layoutedit/preview.go -SimpleMatch 'config.ButtonNames')) { throw 'preview button catalog compatibility unexpectedly removed' }
+      - name: Race-test editor and action consumers
+        working-directory: go-app
+        run: go test -race ./action ./config ./textinput ./layoutedit ./handler
+      - name: Test full Windows application
+        working-directory: go-app
+        run: go test ./...
+      - name: Vet application
+        working-directory: go-app
+        run: go vet ./...
+      - name: Build Windows GUI
+        working-directory: go-app
+        run: |
+          New-Item -ItemType Directory -Force ../dist | Out-Null
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../dist/KeyboardAZ.exe .
+      - name: Commit layout editor migration
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add go-app/layoutedit/session.go go-app/layoutedit/catalog.go go-app/layoutedit/diagnostics.go go-app/layoutedit/preview.go
+          if (git diff --cached --quiet) { throw 'layoutedit action migration produced no changes' }
+          git commit -m "refactor: use action domain in layout editor"
+          git push origin HEAD:main
