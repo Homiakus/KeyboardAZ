@@ -99,8 +99,10 @@ jobs:
         run: |
           if (-not (Select-String -Path go-app/config/keymap.go -SimpleMatch 'const MainButtonCount = controls.MainButtonCount')) { throw 'config count alias missing' }
           if (-not (Select-String -Path go-app/config/keymap.go -SimpleMatch 'var ButtonNames = controls.Names()')) { throw 'config name compatibility alias missing' }
-          if (Select-String -Path go-app/textinput/*.go -SimpleMatch 'hapticpad-go-app/config') { throw 'textinput still imports config' }
-          if (Select-String -Path go-app/layoutedit/*.go -SimpleMatch 'hapticpad-go-app/config') { throw 'layoutedit still imports config' }
+          $textinputProduction = Get-ChildItem go-app/textinput -Filter *.go | Where-Object { $_.Name -notlike '*_test.go' }
+          if ($textinputProduction | Select-String -SimpleMatch 'hapticpad-go-app/config') { throw 'textinput production code still imports config' }
+          $layouteditProduction = Get-ChildItem go-app/layoutedit -Filter *.go | Where-Object { $_.Name -notlike '*_test.go' }
+          if ($layouteditProduction | Select-String -SimpleMatch 'hapticpad-go-app/config') { throw 'layoutedit production code still imports config' }
           if (-not (Select-String -Path go-app/textinput/layout.go -SimpleMatch 'const MainButtonCount = controls.MainButtonCount')) { throw 'textinput count does not use controls domain' }
       - name: Race-test controls and consumers
         working-directory: go-app
