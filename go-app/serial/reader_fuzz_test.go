@@ -13,6 +13,10 @@ func FuzzParseCompactFormat(f *testing.F) {
 		"v2,language,4,ru",
 		"v2,status,5,1,en,0,0",
 		"v2,error,6,test,1",
+		// Minimized by the engineering-loop fuzz lane on 2026-08-27.
+		"v2,stroke,0,,0,0",
+		// Legacy counterpart pins the unified parser-success contract.
+		"p,9,99",
 		"",
 		"v2",
 	}
