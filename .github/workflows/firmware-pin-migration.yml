@@ -1,0 +1,70 @@
+name: firmware-pin-migration
+
+# One-shot reproducibility migration. Remove after the validated pin lands.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/firmware-pin-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install pinned PlatformIO Core
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check 'platformio==6.1.19'
+          pio --version
+      - name: Pin RP2040 platform in candidate tree
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('platformio.ini')
+          text = path.read_text(encoding='utf-8')
+          old = 'platform = https://github.com/maxgerhardt/platform-raspberrypi.git'
+          new = 'platform = https://github.com/maxgerhardt/platform-raspberrypi.git#9c167c6b8aac4f4cfa6d55a0c4e5b848795150c0'
+          if old not in text:
+              raise SystemExit('unpinned platform line not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          grep '^platform = ' platformio.ini
+      - name: Build pinned firmware
+        shell: bash
+        run: pio run -e pico
+      - name: Verify UF2 and record provenance
+        shell: bash
+        run: |
+          test -s .pio/build/pico/firmware.uf2
+          sha256sum .pio/build/pico/firmware.uf2 | tee firmware.uf2.sha256
+          stat --printf='firmware.uf2 bytes=%s\n' .pio/build/pico/firmware.uf2 | tee firmware.uf2.size
+          {
+            echo '### Validated firmware toolchain'
+            echo '- PlatformIO Core: 6.1.19'
+            echo '- platform-raspberrypi: 9c167c6b8aac4f4cfa6d55a0c4e5b848795150c0'
+            echo '- Arduino-Pico upstream carried by that platform commit'
+            echo '```text'
+            cat firmware.uf2.size
+            cat firmware.uf2.sha256
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit validated platform pin
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add platformio.ini
+          if git diff --cached --quiet; then
+            echo 'Validated pin already present; nothing to commit.'
+            exit 0
+          fi
+          git commit -m 'build: pin RP2040 PlatformIO platform revision'
+          git pull --rebase origin main
+          git push origin HEAD:main
