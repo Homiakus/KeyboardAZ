@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -15,20 +16,18 @@ import (
 	"hapticpad-go-app/device"
 	"hapticpad-go-app/protocol"
 	"hapticpad-go-app/telemetry"
-	"hapticpad-go-app/transport"
 )
 
 const (
 	digcfPresent         = 0x00000002
 	digcfDeviceInterface = 0x00000010
-	hidInputReportSize   = transport.ProtocolV3Size + 1 // Windows includes report ID byte.
 )
 
 var (
 	setupapi                             = windows.NewLazySystemDLL("setupapi.dll")
 	hidDLL                               = windows.NewLazySystemDLL("hid.dll")
 	procSetupDiGetClassDevsW             = setupapi.NewProc("SetupDiGetClassDevsW")
-	procSetupDiEnumDeviceInterfaces      = setupapi.NewProc("SetupDiEnumDeviceInterfaces")
+	procSetupDiEnumDeviceInterfaces      = setupapi.NewProc("SetupDiEnumDeviceInterfacesW")
 	procSetupDiGetDeviceInterfaceDetailW = setupapi.NewProc("SetupDiGetDeviceInterfaceDetailW")
 	procSetupDiDestroyDeviceInfoList     = setupapi.NewProc("SetupDiDestroyDeviceInfoList")
 	procHidDGetAttributes                = hidDLL.NewProc("HidD_GetAttributes")
@@ -72,6 +71,7 @@ type Reader struct {
 	done      chan struct{}
 	closeOnce sync.Once
 	health    telemetry.Recorder
+	observer  Observer
 }
 
 // Discover enumerates present HID interfaces and returns only interfaces whose
@@ -216,11 +216,16 @@ func openHIDPath(path string) (windows.Handle, error) {
 // Open selects exactly one HID interface for the durable CDC identity and
 // starts its realtime read loop. Raw HID remains opt-in at composition level.
 func Open(reference device.Identity) (*Reader, error) {
-	return OpenWithRecorder(reference, telemetry.Process())
+	return OpenWithOptions(reference, OpenOptions{})
 }
 
-// OpenWithRecorder opens the HID realtime path with instance-owned telemetry.
+// OpenWithRecorder preserves the existing convenience API while delegating to
+// the explicit options path.
 func OpenWithRecorder(reference device.Identity, recorder telemetry.Recorder) (*Reader, error) {
+	return OpenWithOptions(reference, OpenOptions{Recorder: recorder})
+}
+
+func OpenWithOptions(reference device.Identity, options OpenOptions) (*Reader, error) {
 	candidates, err := Discover()
 	if err != nil {
 		return nil, err
@@ -229,14 +234,18 @@ func OpenWithRecorder(reference device.Identity, recorder telemetry.Recorder) (*
 	if err != nil {
 		return nil, err
 	}
-	return OpenCandidateWithRecorder(candidate, recorder)
+	return OpenCandidateWithOptions(candidate, options)
 }
 
 func OpenCandidate(candidate Candidate) (*Reader, error) {
-	return OpenCandidateWithRecorder(candidate, telemetry.Process())
+	return OpenCandidateWithOptions(candidate, OpenOptions{})
 }
 
 func OpenCandidateWithRecorder(candidate Candidate, recorder telemetry.Recorder) (*Reader, error) {
+	return OpenCandidateWithOptions(candidate, OpenOptions{Recorder: recorder})
+}
+
+func OpenCandidateWithOptions(candidate Candidate, options OpenOptions) (*Reader, error) {
 	if candidate.Path == "" {
 		return nil, ErrDeviceNotFound
 	}
@@ -249,7 +258,8 @@ func OpenCandidateWithRecorder(candidate Candidate, recorder telemetry.Recorder)
 		messages: make(chan protocol.Event, 512),
 		errors:   make(chan error, 16),
 		done:     make(chan struct{}),
-		health:   telemetry.RecorderOrProcess(recorder),
+		health:   telemetry.RecorderOrProcess(options.Recorder),
+		observer: options.Observer,
 	}
 	go reader.readLoop()
 	return reader, nil
@@ -284,10 +294,11 @@ func (r *Reader) readLoop() {
 	defer close(r.messages)
 	defer close(r.errors)
 
-	buffer := make([]byte, hidInputReportSize)
+	buffer := make([]byte, InputReportSize)
 	for {
 		var read uint32
 		err := windows.ReadFile(r.handle, buffer, &read, nil)
+		hostReceivedAt := time.Now()
 		if err != nil {
 			select {
 			case <-r.done:
@@ -297,24 +308,21 @@ func (r *Reader) readLoop() {
 			r.publishError(fmt.Errorf("Raw HID ReadFile: %w", err))
 			return
 		}
-		if read != hidInputReportSize {
-			err := fmt.Errorf("Raw HID input report size %d, want %d", read, hidInputReportSize)
-			r.health.RecordParseError(err)
-			r.publishError(err)
-			continue
-		}
-		if buffer[0] == 0 {
-			err := errors.New("Raw HID report ID zero is invalid for KeyboardAZ v3")
+		if read != InputReportSize {
+			err := fmt.Errorf("Raw HID input report size %d, want %d", read, InputReportSize)
 			r.health.RecordParseError(err)
 			r.publishError(err)
 			continue
 		}
 
-		event, _, err := transport.DecodeV3Event(buffer[1:hidInputReportSize])
+		event, observation, err := DecodeInputReport(buffer[:read], hostReceivedAt)
 		if err != nil {
 			r.health.RecordParseError(err)
 			r.publishError(fmt.Errorf("decode Raw HID v3: %w", err))
 			continue
+		}
+		if r.observer != nil {
+			r.observer.ObserveHIDV3(observation)
 		}
 		r.health.ObserveTransportMessageOn("hid-v3", event.Protocol, event.Sequence, event.Type, event.Firmware)
 		select {
