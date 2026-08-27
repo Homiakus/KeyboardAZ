@@ -106,6 +106,30 @@ func TestCheckMutationPassesStrongReport(t *testing.T) {
 	}
 }
 
+func TestMutationReportIgnoresExternalMetadataButKeepsCounters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mutation.json")
+	data := []byte(`{
+		"go_module":"hapticpad-go-app",
+		"test_efficacy":100,
+		"mutations_coverage":100,
+		"mutants_total":3,
+		"mutants_killed":3,
+		"mutants_lived":0,
+		"mutants_not_viable":0,
+		"mutants_not_covered":0,
+		"elapsed_time":1.25,
+		"files":[{"file":"transport/protocol_v3.go"}],
+		"future_metadata":{"tool_version":"next"}
+	}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	policy := mutationPolicy{MinimumEfficacy: 80, MinimumMutantCoverage: 75}
+	if err := checkMutation(path, policy, false); err != nil {
+		t.Fatalf("external metadata must not break mutation gate: %v", err)
+	}
+}
+
 func writeMutationFixture(t *testing.T, path string, report mutationReport) {
 	t.Helper()
 	data, err := json.Marshal(report)
