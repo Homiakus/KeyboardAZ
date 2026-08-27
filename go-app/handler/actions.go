@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	domainaction "hapticpad-go-app/action"
 	"hapticpad-go-app/config"
 	"hapticpad-go-app/telemetry"
 )
@@ -29,7 +30,7 @@ const (
 // EnqueuedAt is operational timing metadata only; action content is never
 // copied into telemetry.
 type ActionRequest struct {
-	Action     config.Action
+	Action     domainaction.Action
 	EnqueuedAt time.Time
 }
 
@@ -153,9 +154,9 @@ func (h *Handler) startBackgroundWorker() {
 			return
 		case req := <-h.backgroundQueue:
 			switch req.Action.Type {
-			case config.ActionCommand:
+			case domainaction.Command:
 				h.handleCommand(req.Action.Command)
-			case config.ActionMacro:
+			case domainaction.Macro:
 				h.scheduleMacro(req.Action.Macro, 0)
 			default:
 				// Defensive fallback. Background work must never execute keyboard
@@ -166,13 +167,13 @@ func (h *Handler) startBackgroundWorker() {
 	}
 }
 
-func (h *Handler) executeInputAction(action config.Action) {
+func (h *Handler) executeInputAction(action domainaction.Action) {
 	switch action.Type {
-	case config.ActionKey:
+	case domainaction.Key:
 		h.handleKey(action.Key)
-	case config.ActionText:
+	case domainaction.Text:
 		h.handleText(action.Text)
-	case config.ActionCombo:
+	case domainaction.Combo:
 		h.handleCombo(action.Keys)
 	default:
 		log.Printf("non-realtime action reached input worker: %s", action.Type)
@@ -188,11 +189,11 @@ func (h *Handler) Close() {
 	})
 }
 
-func isBackgroundAction(action config.Action) bool {
-	return action.Type == config.ActionMacro || action.Type == config.ActionCommand
+func isBackgroundAction(action domainaction.Action) bool {
+	return action.Type == domainaction.Macro || action.Type == domainaction.Command
 }
 
-func (h *Handler) enqueue(queue chan ActionRequest, action config.Action) bool {
+func (h *Handler) enqueue(queue chan ActionRequest, action domainaction.Action) bool {
 	select {
 	case <-h.closed:
 		return false
@@ -201,7 +202,7 @@ func (h *Handler) enqueue(queue chan ActionRequest, action config.Action) bool {
 	}
 }
 
-func (h *Handler) enqueueRealtime(action config.Action) bool {
+func (h *Handler) enqueueRealtime(action domainaction.Action) bool {
 	if !h.enqueue(h.realtimeQueue, action) {
 		return false
 	}
@@ -209,11 +210,11 @@ func (h *Handler) enqueueRealtime(action config.Action) bool {
 	return true
 }
 
-func (h *Handler) enqueueMacroStep(action config.Action) bool {
+func (h *Handler) enqueueMacroStep(action domainaction.Action) bool {
 	return h.enqueue(h.macroStepQueue, action)
 }
 
-func (h *Handler) tryEnqueueBackground(action config.Action) bool {
+func (h *Handler) tryEnqueueBackground(action domainaction.Action) bool {
 	select {
 	case <-h.closed:
 		return false
@@ -230,7 +231,7 @@ func (h *Handler) tryEnqueueBackground(action config.Action) bool {
 // HandleAction queues an already resolved action. Realtime strokes use a
 // lossless queue: under extreme overload the reader applies backpressure rather
 // than silently deleting typed characters.
-func (h *Handler) HandleAction(action *config.Action) {
+func (h *Handler) HandleAction(action *domainaction.Action) {
 	if action == nil {
 		return
 	}
@@ -297,7 +298,7 @@ func (h *Handler) handleCommand(cmd string) {
 // scheduleMacro emits short keyboard steps to a low-priority input queue. Its
 // delay and command execution occur on the background worker and therefore do
 // not block physical typing.
-func (h *Handler) scheduleMacro(macro []config.Action, depth int) {
+func (h *Handler) scheduleMacro(macro []domainaction.Action, depth int) {
 	if depth > maxMacroDepth {
 		log.Printf("macro nesting exceeds maximum depth %d", maxMacroDepth)
 		return
@@ -312,13 +313,13 @@ func (h *Handler) scheduleMacro(macro []config.Action, depth int) {
 
 		action := macro[i]
 		switch action.Type {
-		case config.ActionKey, config.ActionText, config.ActionCombo:
+		case domainaction.Key, domainaction.Text, domainaction.Combo:
 			if !h.enqueueMacroStep(action) {
 				return
 			}
-		case config.ActionCommand:
+		case domainaction.Command:
 			h.handleCommand(action.Command)
-		case config.ActionMacro:
+		case domainaction.Macro:
 			h.scheduleMacro(action.Macro, depth+1)
 		default:
 			log.Printf("unknown macro action type: %s", action.Type)
