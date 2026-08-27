@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"hapticpad-go-app/handler"
 	"hapticpad-go-app/hidv3"
+	"hapticpad-go-app/inputtrace"
 	"hapticpad-go-app/latencyreport"
 	"hapticpad-go-app/transport"
 )
@@ -81,8 +81,8 @@ func TestHIDV3CSVObserverCorrelatesSendInputBySequence(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	observer.ObserveSendInput(handler.SendInputObservation{
-		Trace:    handler.InputTrace{Transport: latencyreport.TransportHIDV3, Sequence: 9},
+	observer.ObserveSendInput(inputtrace.SendInputObservation{
+		Trace:    inputtrace.Trace{Transport: latencyreport.TransportHIDV3, Sequence: 9},
 		CalledAt: sendInputAt,
 		Success:  true,
 	})
@@ -131,8 +131,8 @@ func TestHIDV3CSVObserverDetectsUnmatchedSendInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observer.ObserveSendInput(handler.SendInputObservation{
-		Trace:    handler.InputTrace{Transport: latencyreport.TransportHIDV3, Sequence: 44},
+	observer.ObserveSendInput(inputtrace.SendInputObservation{
+		Trace:    inputtrace.Trace{Transport: latencyreport.TransportHIDV3, Sequence: 44},
 		CalledAt: observer.hostEpoch.Add(time.Millisecond),
 		Success:  true,
 	})
