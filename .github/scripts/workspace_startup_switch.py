@@ -47,4 +47,10 @@ if old_config_dir not in source:
     raise SystemExit("legacy getConfigDir block missing")
 source = source.replace(old_config_dir, new_config_dir, 1)
 
+filepath_import = '\t"path/filepath"\n'
+if "filepath." not in source:
+    if filepath_import not in source:
+        raise SystemExit("filepath import missing before cleanup")
+    source = source.replace(filepath_import, "", 1)
+
 path.write_text(source, encoding="utf-8")
