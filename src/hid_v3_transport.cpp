@@ -11,6 +11,11 @@
 #include <USB.h>
 #include <class/hid/hid_device.h>
 #include <tusb.h>
+// Arduino-Pico uses an intentionally empty library marker header to make its
+// build system link libraries/tusb-hid/src/hid_device.c. Including TinyUSB's
+// class header alone is not enough: the wrapper compiles but tud_hid_* remains
+// undefined at link time.
+#include <tusb-hid.h>
 
 // Arduino-Pico defines this symbol weakly as 10 ms. The HID-v3 candidate uses
 // a 1 ms interrupt polling interval while leaving the production CDC-only build
