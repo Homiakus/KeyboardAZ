@@ -136,12 +136,8 @@ replacements = [
 \t\t\ta.appendHistory""",
     ),
     (
-        """\t\t\ta.mu.Lock()
-\t\t\ta.activeButtons = nil
-\t\t\ta.activeButtonsMask = 0
-\t\t\ta.mu.Unlock()
-\t\t\ta.appendHistory(HistoryEntry{Type: "tap"""",
-        """\t\t\ta.appendHistory(HistoryEntry{Type: "tap"""",
+        '\t\t\ta.mu.Lock()\n\t\t\ta.activeButtons = nil\n\t\t\ta.activeButtonsMask = 0\n\t\t\ta.mu.Unlock()\n\t\t\ta.appendHistory(HistoryEntry{Type: "tap"',
+        '\t\t\ta.appendHistory(HistoryEntry{Type: "tap"',
     ),
     (
         """
