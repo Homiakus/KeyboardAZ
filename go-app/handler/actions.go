@@ -28,10 +28,16 @@ const (
 type ActionRequest struct {
 	Action     domainaction.Action
 	EnqueuedAt time.Time
+	Trace      InputTrace
 }
 
 type ActionLookup interface {
 	GetActionByMask(layer int, mask uint32) *domainaction.Action
+}
+
+type HandlerOptions struct {
+	Recorder          telemetry.Recorder
+	SendInputObserver SendInputObserver
 }
 
 type Handler struct {
@@ -56,7 +62,11 @@ func NewHandler(keymap ActionLookup) *Handler {
 }
 
 func NewHandlerWithRecorder(keymap ActionLookup, recorder telemetry.Recorder) *Handler {
-	return newHandlerWithDepsAndRecorder(keymap, nil, defaultCommandRunner, time.Sleep, recorder)
+	return NewHandlerWithOptions(keymap, HandlerOptions{Recorder: recorder})
+}
+
+func NewHandlerWithOptions(keymap ActionLookup, options HandlerOptions) *Handler {
+	return newHandlerWithDepsAndOptions(keymap, nil, defaultCommandRunner, time.Sleep, options)
 }
 
 func newHandlerWithDeps(
@@ -75,9 +85,19 @@ func newHandlerWithDepsAndRecorder(
 	sleep func(time.Duration),
 	recorder telemetry.Recorder,
 ) *Handler {
-	recorder = telemetry.RecorderOrProcess(recorder)
+	return newHandlerWithDepsAndOptions(keymap, keyboard, runCommand, sleep, HandlerOptions{Recorder: recorder})
+}
+
+func newHandlerWithDepsAndOptions(
+	keymap ActionLookup,
+	keyboard Keyboard,
+	runCommand func(string) error,
+	sleep func(time.Duration),
+	options HandlerOptions,
+) *Handler {
+	recorder := telemetry.RecorderOrProcess(options.Recorder)
 	if keyboard == nil {
-		keyboard = newKeyboardWithRecorder(recorder)
+		keyboard = newKeyboardWithOptions(recorder, options.SendInputObserver)
 	}
 	if runCommand == nil {
 		runCommand = defaultCommandRunner
@@ -123,8 +143,7 @@ func (h *Handler) startInputWorker() {
 		case <-h.closed:
 			return
 		case req := <-h.realtimeQueue:
-			h.observeRealtimeDispatch(req)
-			h.executeInputAction(req.Action)
+			h.executeRealtimeRequest(req)
 			continue
 		default:
 		}
@@ -133,18 +152,25 @@ func (h *Handler) startInputWorker() {
 		case <-h.closed:
 			return
 		case req := <-h.realtimeQueue:
-			h.observeRealtimeDispatch(req)
-			h.executeInputAction(req.Action)
+			h.executeRealtimeRequest(req)
 		case macroReq := <-h.macroStepQueue:
 			select {
 			case realtimeReq := <-h.realtimeQueue:
-				h.observeRealtimeDispatch(realtimeReq)
-				h.executeInputAction(realtimeReq.Action)
+				h.executeRealtimeRequest(realtimeReq)
 			default:
 			}
 			h.executeInputAction(macroReq.Action)
 		}
 	}
+}
+
+func (h *Handler) executeRealtimeRequest(req ActionRequest) {
+	h.observeRealtimeDispatch(req)
+	if target, ok := h.keyboard.(inputTraceTarget); ok && req.Trace.Valid() {
+		target.beginInputTrace(req.Trace)
+		defer target.endInputTrace()
+	}
+	h.executeInputAction(req.Action)
 }
 
 func (h *Handler) observeRealtimeDispatch(req ActionRequest) {
@@ -199,17 +225,17 @@ func isBackgroundAction(action domainaction.Action) bool {
 	return action.Type == domainaction.Macro || action.Type == domainaction.Command
 }
 
-func (h *Handler) enqueue(queue chan ActionRequest, action domainaction.Action) bool {
+func (h *Handler) enqueue(queue chan ActionRequest, action domainaction.Action, trace InputTrace) bool {
 	select {
 	case <-h.closed:
 		return false
-	case queue <- ActionRequest{Action: action, EnqueuedAt: time.Now()}:
+	case queue <- ActionRequest{Action: action, EnqueuedAt: time.Now(), Trace: trace}:
 		return true
 	}
 }
 
-func (h *Handler) enqueueRealtime(action domainaction.Action) bool {
-	if !h.enqueue(h.realtimeQueue, action) {
+func (h *Handler) enqueueRealtime(action domainaction.Action, trace InputTrace) bool {
+	if !h.enqueue(h.realtimeQueue, action, trace) {
 		return false
 	}
 	h.health.ObserveRealtimeEnqueue(len(h.realtimeQueue))
@@ -217,7 +243,7 @@ func (h *Handler) enqueueRealtime(action domainaction.Action) bool {
 }
 
 func (h *Handler) enqueueMacroStep(action domainaction.Action) bool {
-	return h.enqueue(h.macroStepQueue, action)
+	return h.enqueue(h.macroStepQueue, action, InputTrace{})
 }
 
 func (h *Handler) tryEnqueueBackground(action domainaction.Action) bool {
@@ -233,6 +259,13 @@ func (h *Handler) tryEnqueueBackground(action domainaction.Action) bool {
 }
 
 func (h *Handler) HandleAction(action *domainaction.Action) {
+	h.HandleActionWithTrace(action, InputTrace{})
+}
+
+// HandleActionWithTrace dispatches a realtime action with a privacy-safe
+// transport correlation key. Background commands/macros deliberately do not
+// inherit the trace because they have no single immediate SendInput boundary.
+func (h *Handler) HandleActionWithTrace(action *domainaction.Action, trace InputTrace) {
 	if action == nil {
 		return
 	}
@@ -242,7 +275,7 @@ func (h *Handler) HandleAction(action *domainaction.Action) {
 		h.tryEnqueueBackground(copied)
 		return
 	}
-	h.enqueueRealtime(copied)
+	h.enqueueRealtime(copied, trace)
 }
 
 func (h *Handler) HandleMessage(layer int, buttonsMask uint32) {
