@@ -2,6 +2,7 @@ package hilcapture
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 	"time"
 
@@ -53,6 +54,10 @@ func TestHIDV3CSVObserverWritesCanonicalDataset(t *testing.T) {
 	if sample.EventType != "stroke" || sample.Button != 17 || sample.Modifiers != 0x09 {
 		t.Fatalf("semantic mapping changed: %+v", sample)
 	}
+	stats := observer.Stats()
+	if stats.Captured != 1 || stats.HostTimingExpected != 1 || stats.Flushed != 1 {
+		t.Fatalf("unexpected capture stats: %+v", stats)
+	}
 }
 
 func TestHIDV3CSVObserverCorrelatesSendInputBySequence(t *testing.T) {
@@ -96,7 +101,7 @@ func TestHIDV3CSVObserverCorrelatesSendInputBySequence(t *testing.T) {
 		t.Fatalf("unexpected T2/T3 correlation: %+v", sample)
 	}
 	stats := observer.Stats()
-	if stats.Captured != 1 || stats.SendInputObserved != 1 || stats.SendInputFailures != 0 || stats.Flushed != 1 {
+	if stats.Captured != 1 || stats.HostTimingExpected != 1 || stats.SendInputObserved != 1 || stats.SendInputFailures != 0 || stats.Flushed != 1 {
 		t.Fatalf("unexpected capture stats: %+v", stats)
 	}
 }
@@ -149,6 +154,55 @@ func TestHIDV3CSVObserverMapsNonStrokeWithoutFakeButton(t *testing.T) {
 		if dataset.Samples[0].Button != -1 {
 			t.Fatalf("event %d got fake button %d", eventType, dataset.Samples[0].Button)
 		}
+		stats := observer.Stats()
+		wantHost := 0
+		if eventType == transport.EventTap {
+			wantHost = 1
+		}
+		if stats.HostTimingExpected != wantHost {
+			t.Fatalf("event %d host timing expected=%d want=%d", eventType, stats.HostTimingExpected, wantHost)
+		}
+	}
+}
+
+func TestHIDV3CSVObserverEnforcesCaptureLimitBeforeExtraSample(t *testing.T) {
+	var buffer bytes.Buffer
+	observer, err := NewHIDV3CSVObserverWithLimit(&buffer, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeObservation := func(sequence uint32) hidv3.Observation {
+		return hidv3.Observation{
+			Report: transport.ReportV3{
+				Type:             transport.EventLanguage,
+				Language:         transport.LanguageEnglish,
+				Sequence:         sequence,
+				EventTimestampUS: sequence * 10,
+			},
+			HostReceivedAt: time.Unix(100, int64(sequence)),
+		}
+	}
+	if err := observer.ObserveHIDV3(makeObservation(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := observer.ObserveHIDV3(makeObservation(2)); err != nil {
+		t.Fatal(err)
+	}
+	if err := observer.ObserveHIDV3(makeObservation(3)); !errors.Is(err, ErrCaptureLimitReached) {
+		t.Fatalf("expected capture limit sentinel, got %v", err)
+	}
+	if stats := observer.Stats(); stats.Captured != 2 {
+		t.Fatalf("capture exceeded limit: %+v", stats)
+	}
+	if err := observer.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	dataset, err := latencyreport.ParseDatasetCSV(bytes.NewReader(buffer.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dataset.Samples) != 2 || dataset.Samples[1].Sequence != 2 {
+		t.Fatalf("unexpected bounded dataset: %+v", dataset.Samples)
 	}
 }
 
