@@ -260,6 +260,7 @@ func run(w *app.Window) error {
 		Open: func(portName string) (connection.Session, error) {
 			return serial.NewReader(portName, baudRate)
 		},
+		RealtimeOpen: realtimeOpenFromEnvironment(),
 	})
 	connectionRuntime := connection.NewRuntime(controller)
 	connectionRuntime.Start()
