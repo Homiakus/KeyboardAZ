@@ -60,7 +60,6 @@ const (
 	MOUSEEVENTF_MIDDLEUP   = 0x0040
 )
 
-// Виртуальные коды клавиш Windows
 const (
 	VK_LBUTTON  = 0x01
 	VK_RBUTTON  = 0x02
@@ -74,13 +73,13 @@ const (
 	VK_RETURN   = 0x0D
 	VK_SHIFT    = 0x10
 	VK_CONTROL  = 0x11
-	VK_MENU     = 0x12 // ALT key
+	VK_MENU     = 0x12
 	VK_PAUSE    = 0x13
 	VK_CAPITAL  = 0x14
 	VK_ESCAPE   = 0x1B
 	VK_SPACE    = 0x20
-	VK_PRIOR    = 0x21 // PAGE UP
-	VK_NEXT     = 0x22 // PAGE DOWN
+	VK_PRIOR    = 0x21
+	VK_NEXT     = 0x22
 	VK_END      = 0x23
 	VK_HOME     = 0x24
 	VK_LEFT     = 0x25
@@ -94,8 +93,8 @@ const (
 	VK_INSERT   = 0x2D
 	VK_DELETE   = 0x2E
 	VK_HELP     = 0x2F
-	VK_LWIN     = 0x5B // Left Windows key
-	VK_RWIN     = 0x5C // Right Windows key
+	VK_LWIN     = 0x5B
+	VK_RWIN     = 0x5C
 	VK_APPS     = 0x5D
 	VK_F1       = 0x70
 	VK_F2       = 0x71
@@ -123,13 +122,10 @@ const (
 	VK_F24      = 0x87
 )
 
-// INPUT структура для Windows SendInput API
-// Размер должен быть 40 байт на 64-битных системах.
-// Используем union через общий буфер для keyboard и mouse
 type input struct {
 	typ  uint32
-	_    [4]byte  // padding для выравнивания union
-	data [32]byte // union для keyboardInput (24 байта) или mouseInput (32 байта)
+	_    [4]byte
+	data [32]byte
 }
 
 type keyboardInput struct {
@@ -154,9 +150,6 @@ const inputSize = int(unsafe.Sizeof(input{}))
 var _ [40 - inputSize]byte
 var _ [inputSize - 40]byte
 
-// prepareRealtimeThread raises only the dedicated injection thread to Above
-// Normal priority. It avoids process-wide priority changes while reducing
-// scheduler jitter under CPU load.
 func prepareRealtimeThread() {
 	thread, _, _ := procGetCurrentThread.Call()
 	if thread == 0 {
@@ -168,13 +161,26 @@ func prepareRealtimeThread() {
 	}
 }
 
+// Keyboard интерфейс для симуляции клавиатуры.
+type Keyboard interface {
+	KeyTap(key string)
+	KeyToggle(key string, direction string)
+	TypeText(text string)
+}
+
+// WindowsKeyboard owns both Win32 injection and its operational recorder.
+type WindowsKeyboard struct {
+	health telemetry.Recorder
+}
+
 // sendInputs submits a complete input sequence in one Win32 call. Keeping
 // key-down/key-up pairs in a single batch removes scheduler gaps and preserves
 // their order relative to other SendInput callers.
-func sendInputs(inputs []input) bool {
+func (k *WindowsKeyboard) sendInputs(inputs []input) bool {
 	if len(inputs) == 0 {
 		return true
 	}
+	health := telemetry.RecorderOrProcess(k.health)
 	inserted, _, callErr := procSendInput.Call(
 		uintptr(len(inputs)),
 		uintptr(unsafe.Pointer(&inputs[0])),
@@ -182,11 +188,11 @@ func sendInputs(inputs []input) bool {
 	)
 	if inserted != uintptr(len(inputs)) {
 		err := fmt.Errorf("SendInput inserted %d/%d events: %v", inserted, len(inputs), callErr)
-		telemetry.Process().RecordSendInput(false, err)
+		health.RecordSendInput(false, err)
 		log.Print(err)
 		return false
 	}
-	telemetry.Process().RecordSendInput(true, nil)
+	health.RecordSendInput(true, nil)
 	return true
 }
 
@@ -208,28 +214,22 @@ func makeMouseInput(flags uint32) input {
 	return inp
 }
 
-func sendKeyInput(vk uint16, scan uint16, flags uint32) {
+func (k *WindowsKeyboard) sendKeyInput(vk uint16, scan uint16, flags uint32) {
 	inputs := [1]input{makeKeyboardInput(vk, scan, flags)}
-	sendInputs(inputs[:])
+	k.sendInputs(inputs[:])
 }
 
-// keyToVk преобразует строковое имя клавиши в виртуальный код клавиши Windows
 func keyToVk(key string) (uint16, bool) {
 	key = strings.ToLower(key)
-
 	if vk, ok := specialKeyVK[key]; ok {
 		return vk, true
 	}
-
-	// F-клавиши
 	if strings.HasPrefix(key, "f") && len(key) > 1 {
 		num := 0
 		if _, err := fmt.Sscanf(key[1:], "%d", &num); err == nil && num >= 1 && num <= 24 {
 			return VK_F1 + uint16(num-1), true
 		}
 	}
-
-	// Обычные клавиши (a-z, 0-9)
 	if len(key) == 1 {
 		char := key[0]
 		if char >= 'a' && char <= 'z' {
@@ -238,14 +238,11 @@ func keyToVk(key string) (uint16, bool) {
 		if char >= '0' && char <= '9' {
 			return uint16(char), true
 		}
-		// Для других символов используем VkKeyScan
 		return vkKeyScan(char), true
 	}
-
 	return 0, false
 }
 
-// vkKeyScan получает виртуальный код клавиши для символа
 func vkKeyScan(char byte) uint16 {
 	ret, _, _ := procVkKeyScan.Call(uintptr(char))
 	vk := uint16(ret & 0xFF)
@@ -255,58 +252,40 @@ func vkKeyScan(char byte) uint16 {
 	return 0
 }
 
-// sendKeyDown отправляет событие нажатия клавиши
-func sendKeyDown(vk uint16) {
-	sendKeyInput(vk, 0, 0)
+func (k *WindowsKeyboard) sendKeyDown(vk uint16) {
+	k.sendKeyInput(vk, 0, 0)
 }
 
-// sendKeyUp отправляет событие отпускания клавиши
-func sendKeyUp(vk uint16) {
-	sendKeyInput(vk, 0, KEYEVENTF_KEYUP)
+func (k *WindowsKeyboard) sendKeyUp(vk uint16) {
+	k.sendKeyInput(vk, 0, KEYEVENTF_KEYUP)
 }
 
-// sendKeyTap отправляет событие нажатия и отпускания клавиши
-func sendKeyTap(vk uint16) {
+func (k *WindowsKeyboard) sendKeyTap(vk uint16) {
 	inputs := [2]input{
 		makeKeyboardInput(vk, 0, 0),
 		makeKeyboardInput(vk, 0, KEYEVENTF_KEYUP),
 	}
-	sendInputs(inputs[:])
+	k.sendInputs(inputs[:])
 }
 
-// sendMouseInput submits a single mouse event.
-func sendMouseInput(flags uint32) {
+func (k *WindowsKeyboard) sendMouseInput(flags uint32) {
 	inputs := [1]input{makeMouseInput(flags)}
-	sendInputs(inputs[:])
+	k.sendInputs(inputs[:])
 }
 
-// sendMouseClick batches press and release to avoid a goroutine scheduling gap.
-func sendMouseClick(flagsDown, flagsUp uint32) {
+func (k *WindowsKeyboard) sendMouseClick(flagsDown, flagsUp uint32) {
 	inputs := [2]input{makeMouseInput(flagsDown), makeMouseInput(flagsUp)}
-	sendInputs(inputs[:])
+	k.sendInputs(inputs[:])
 }
 
-// Keyboard интерфейс для симуляции клавиатуры
-type Keyboard interface {
-	KeyTap(key string)
-	KeyToggle(key string, direction string)
-	TypeText(text string)
-}
-
-// WindowsKeyboard реализует симуляцию клавиатуры для Windows
-type WindowsKeyboard struct{}
-
-// KeyTap симулирует нажатие одной клавиши или клик мыши
 func (k *WindowsKeyboard) KeyTap(key string) {
 	keyLower := strings.ToLower(key)
-
-	// Обработка кликов мыши
 	if keyLower == "mouse_left" {
-		sendMouseClick(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP)
+		k.sendMouseClick(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP)
 		return
 	}
 	if keyLower == "mouse_right" {
-		sendMouseClick(MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP)
+		k.sendMouseClick(MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP)
 		return
 	}
 
@@ -315,8 +294,7 @@ func (k *WindowsKeyboard) KeyTap(key string) {
 		log.Printf("Unknown key: %s", key)
 		return
 	}
-
-	sendKeyTap(vk)
+	k.sendKeyTap(vk)
 }
 
 func makeUnicodeInput(unit uint16, keyUp bool) input {
@@ -327,9 +305,6 @@ func makeUnicodeInput(unit uint16, keyUp bool) input {
 	return makeKeyboardInput(0, unit, flags)
 }
 
-// TypeText sends UTF-16 code units with KEYEVENTF_UNICODE. The common path for
-// one Hapticpad symbol uses only a fixed stack array, avoiding per-keystroke
-// allocations and the GC jitter they can create during sustained typing.
 func (k *WindowsKeyboard) TypeText(text string) {
 	if text == "" {
 		return
@@ -341,7 +316,7 @@ func (k *WindowsKeyboard) TypeText(text string) {
 				makeUnicodeInput(uint16(r), false),
 				makeUnicodeInput(uint16(r), true),
 			}
-			sendInputs(inputs[:])
+			k.sendInputs(inputs[:])
 			return
 		}
 
@@ -352,7 +327,7 @@ func (k *WindowsKeyboard) TypeText(text string) {
 			makeUnicodeInput(uint16(low), false),
 			makeUnicodeInput(uint16(low), true),
 		}
-		sendInputs(inputs[:])
+		k.sendInputs(inputs[:])
 		return
 	}
 
@@ -361,10 +336,9 @@ func (k *WindowsKeyboard) TypeText(text string) {
 	for _, unit := range units {
 		inputs = append(inputs, makeUnicodeInput(unit, false), makeUnicodeInput(unit, true))
 	}
-	sendInputs(inputs)
+	k.sendInputs(inputs)
 }
 
-// KeyToggle симулирует нажатие или отпускание клавиши
 func (k *WindowsKeyboard) KeyToggle(key string, direction string) {
 	vk, ok := keyToVk(key)
 	if !ok {
@@ -373,8 +347,8 @@ func (k *WindowsKeyboard) KeyToggle(key string, direction string) {
 	}
 
 	if direction == "down" {
-		sendKeyDown(vk)
+		k.sendKeyDown(vk)
 	} else if direction == "up" {
-		sendKeyUp(vk)
+		k.sendKeyUp(vk)
 	}
 }
