@@ -113,8 +113,13 @@ new_boundary = '''func TestCompositionRootInjectsApplicationTelemetryRecorder(t 
 \t\tfilepath.Join("hidv3", "source_windows.go"),
 \t} {
 \t\tcomponent := readModuleSource(t, name)
-\t\tif strings.Contains(component, "telemetry.Process()") {
-\t\t\tt.Errorf("%s bypasses injected telemetry ownership", name)
+\t\tfor _, forbidden := range []string{
+\t\t\t"telemetry.Process().Record",
+\t\t\t"telemetry.Process().Observe",
+\t\t} {
+\t\t\tif strings.Contains(component, forbidden) {
+\t\t\t\tt.Errorf("%s bypasses injected telemetry ownership through %q", name, forbidden)
+\t\t\t}
 \t\t}
 \t}
 }
