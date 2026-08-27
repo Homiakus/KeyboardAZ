@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"hapticpad-go-app/handler"
 	"hapticpad-go-app/hidv3"
 	"hapticpad-go-app/hilcapture"
+	"hapticpad-go-app/inputtrace"
 	"hapticpad-go-app/latencyreport"
 	"hapticpad-go-app/transport"
 )
@@ -53,8 +53,8 @@ func TestWaitForHostCoverageReturnsAfterCorrelatedT3(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	observer.ObserveSendInput(handler.SendInputObservation{
-		Trace:    handler.InputTrace{Transport: latencyreport.TransportHIDV3, Sequence: 1},
+	observer.ObserveSendInput(inputtrace.SendInputObservation{
+		Trace:    inputtrace.Trace{Transport: latencyreport.TransportHIDV3, Sequence: 1},
 		CalledAt: receivedAt.Add(200 * time.Microsecond),
 		Success:  true,
 	})
