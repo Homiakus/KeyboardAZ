@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 	"unicode/utf16"
 	"unicode/utf8"
 	"unsafe"
@@ -170,7 +171,20 @@ type Keyboard interface {
 
 // WindowsKeyboard owns both Win32 injection and its operational recorder.
 type WindowsKeyboard struct {
-	health telemetry.Recorder
+	health    telemetry.Recorder
+	observer  SendInputObserver
+	trace     InputTrace
+	traceOpen bool
+}
+
+func (k *WindowsKeyboard) beginInputTrace(trace InputTrace) {
+	k.trace = trace
+	k.traceOpen = trace.Valid()
+}
+
+func (k *WindowsKeyboard) endInputTrace() {
+	k.trace = InputTrace{}
+	k.traceOpen = false
 }
 
 // sendInputs submits a complete input sequence in one Win32 call. Keeping
@@ -181,12 +195,23 @@ func (k *WindowsKeyboard) sendInputs(inputs []input) bool {
 		return true
 	}
 	health := telemetry.RecorderOrProcess(k.health)
+	calledAt := time.Now()
 	inserted, _, callErr := procSendInput.Call(
 		uintptr(len(inputs)),
 		uintptr(unsafe.Pointer(&inputs[0])),
 		unsafe.Sizeof(inputs[0]),
 	)
-	if inserted != uintptr(len(inputs)) {
+	success := inserted == uintptr(len(inputs))
+	if k.traceOpen && k.observer != nil {
+		k.observer.ObserveSendInput(SendInputObservation{
+			Trace:    k.trace,
+			CalledAt: calledAt,
+			Success:  success,
+		})
+		// T3 is the first actual SendInput boundary for one physical event.
+		k.traceOpen = false
+	}
+	if !success {
 		err := fmt.Errorf("SendInput inserted %d/%d events: %v", inserted, len(inputs), callErr)
 		health.RecordSendInput(false, err)
 		log.Print(err)
