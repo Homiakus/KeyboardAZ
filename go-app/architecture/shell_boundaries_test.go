@@ -28,12 +28,11 @@ func TestConfiguratorUsesApplicationEditingBoundary(t *testing.T) {
 	}
 }
 
-func TestMainDoesNotOwnSerialReconnectPolicy(t *testing.T) {
+func TestMainDoesNotOwnReconnectPolicy(t *testing.T) {
 	content := readSource(t, "main.go")
 	for _, forbidden := range []string{
 		"attemptReconnect(",
 		"reconnectInProgress",
-		"serial.NewReader(",
 		"reconnectAttempts   int",
 	} {
 		if strings.Contains(content, forbidden) {
@@ -47,6 +46,19 @@ func TestMainDoesNotOwnSerialReconnectPolicy(t *testing.T) {
 	} {
 		if !strings.Contains(content, required) {
 			t.Errorf("main.go lost required application boundary %q", required)
+		}
+	}
+}
+
+func TestCompositionRootInjectsConcreteCDCTransport(t *testing.T) {
+	content := readSource(t, "main.go")
+	for _, required := range []string{
+		"connection.NewControllerWithOptions(",
+		"Open: func(portName string) (connection.Session, error)",
+		"return serial.NewReader(portName, baudRate)",
+	} {
+		if !strings.Contains(content, required) {
+			t.Errorf("main.go does not explicitly compose CDC transport through %q", required)
 		}
 	}
 }
