@@ -8,7 +8,6 @@
 package config
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,17 +15,20 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	domainaction "hapticpad-go-app/action"
 )
 
-// ActionType определяет тип действия
-type ActionType string
+// ActionType and constants remain source-compatible aliases while the
+// canonical model lives in the action domain package.
+type ActionType = domainaction.Type
 
 const (
-	ActionKey     ActionType = "key"     // Симуляция нажатия клавиши
-	ActionText    ActionType = "text"    // Детерминированный Unicode-текст
-	ActionCombo   ActionType = "combo"   // Сочетание клавиш
-	ActionCommand ActionType = "command" // Запуск команды/скрипта
-	ActionMacro   ActionType = "macro"   // Макрос (последовательность действий)
+	ActionKey     = domainaction.Key
+	ActionText    = domainaction.Text
+	ActionCombo   = domainaction.Combo
+	ActionCommand = domainaction.Command
+	ActionMacro   = domainaction.Macro
 )
 
 const MainButtonCount = 22
@@ -47,15 +49,8 @@ var buttonIndexByName = func() map[string]int {
 	return index
 }()
 
-// Action определяет действие для кнопки или сочетания
-type Action struct {
-	Type    ActionType `json:"type"`
-	Key     string     `json:"key,omitempty"`     // Для ActionKey: "a", "ctrl", "f1" и т.д.
-	Text    string     `json:"text,omitempty"`    // Для ActionText: Unicode-текст без зависимости от раскладки ОС
-	Keys    []string   `json:"keys,omitempty"`    // Для ActionCombo: ["ctrl", "c"]
-	Command string     `json:"command,omitempty"` // Для ActionCommand: путь к команде
-	Macro   []Action   `json:"macro,omitempty"`   // Для ActionMacro: последовательность действий
-}
+// Action is a compatibility alias to the canonical domain model.
+type Action = domainaction.Action
 
 // KeymapConfig представляет полную конфигурацию кеймапов
 type KeymapConfig struct {
@@ -80,174 +75,22 @@ type layerFile struct {
 	Combos  map[string]Action `json:"combos,omitempty"`
 }
 
-// UnmarshalJSON поддерживает короткую запись:
-// "a" -> key, "ctrl+c" -> combo, "cmd:notepad.exe" -> command, ["ctrl+c", "v"] -> macro.
-func (a *Action) UnmarshalJSON(data []byte) error {
-	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-		*a = Action{}
-		return nil
-	}
-
-	switch trimmed[0] {
-	case '"':
-		var shortcut string
-		if err := json.Unmarshal(trimmed, &shortcut); err != nil {
-			return err
-		}
-		action, err := parseActionShortcut(shortcut)
-		if err != nil {
-			return err
-		}
-		*a = action
-		return nil
-	case '[':
-		var rawItems []json.RawMessage
-		if err := json.Unmarshal(trimmed, &rawItems); err != nil {
-			return err
-		}
-
-		steps := make([]Action, 0, len(rawItems))
-		for _, item := range rawItems {
-			var step Action
-			if err := step.UnmarshalJSON(item); err != nil {
-				return err
-			}
-			steps = append(steps, step)
-		}
-
-		action := normalizeAction(Action{Type: ActionMacro, Macro: steps})
-		if err := validateAction(action); err != nil {
-			return err
-		}
-		*a = action
-		return nil
-	case '{':
-		var raw struct {
-			Type    ActionType `json:"type"`
-			Key     string     `json:"key"`
-			Text    string     `json:"text"`
-			Keys    []string   `json:"keys"`
-			Command string     `json:"command"`
-			Macro   []Action   `json:"macro"`
-		}
-		if err := json.Unmarshal(trimmed, &raw); err != nil {
-			return err
-		}
-
-		action := Action{
-			Type:    raw.Type,
-			Key:     raw.Key,
-			Text:    raw.Text,
-			Keys:    raw.Keys,
-			Command: raw.Command,
-			Macro:   raw.Macro,
-		}
-
-		if action.Type == "" {
-			switch {
-			case action.Key != "":
-				action.Type = ActionKey
-			case action.Text != "":
-				action.Type = ActionText
-			case len(action.Keys) > 0:
-				action.Type = ActionCombo
-			case action.Command != "":
-				action.Type = ActionCommand
-			case len(action.Macro) > 0:
-				action.Type = ActionMacro
-			}
-		}
-
-		action = normalizeAction(action)
-		if err := validateAction(action); err != nil {
-			return err
-		}
-
-		*a = action
-		return nil
-	default:
-		return fmt.Errorf("unsupported action JSON: %s", string(trimmed))
-	}
-}
-
-// MarshalJSON сохраняет action в компактной форме, удобной для ручного редактирования.
-func (a Action) MarshalJSON() ([]byte, error) {
-	action := normalizeAction(a)
-
-	switch action.Type {
-	case ActionKey:
-		return json.Marshal(action.Key)
-	case ActionText:
-		return json.Marshal(struct {
-			Type ActionType `json:"type"`
-			Text string     `json:"text"`
-		}{Type: ActionText, Text: action.Text})
-	case ActionCombo:
-		return json.Marshal(strings.Join(action.Keys, "+"))
-	case ActionCommand:
-		return json.Marshal("cmd:" + action.Command)
-	case ActionMacro:
-		return json.Marshal(action.Macro)
-	default:
-		return nil, fmt.Errorf("unsupported action type: %s", action.Type)
-	}
-}
-
 // NormalizeAction returns a canonical copy suitable for storage and execution.
-func NormalizeAction(action Action) Action {
-	return normalizeAction(action)
-}
+func NormalizeAction(action Action) Action { return domainaction.Normalize(action) }
 
 // ValidateAction validates an action after normalization.
-func ValidateAction(action Action) error {
-	return validateAction(normalizeAction(action))
-}
+func ValidateAction(action Action) error { return domainaction.Validate(action) }
 
 // ParseActionShortcut parses the same compact syntax accepted by keymap JSON.
 func ParseActionShortcut(shortcut string) (Action, error) {
-	action, err := parseActionShortcut(shortcut)
-	if err != nil {
-		return Action{}, err
-	}
-	action = normalizeAction(action)
-	if err := validateAction(action); err != nil {
-		return Action{}, err
-	}
-	return action, nil
+	return domainaction.ParseShortcut(shortcut)
 }
 
 // CloneAction deep-copies macro and combo slices.
-func CloneAction(action Action) Action {
-	cloned := action
-	cloned.Keys = append([]string(nil), action.Keys...)
-	if len(action.Macro) > 0 {
-		cloned.Macro = make([]Action, len(action.Macro))
-		for i := range action.Macro {
-			cloned.Macro[i] = CloneAction(action.Macro[i])
-		}
-	}
-	return cloned
-}
+func CloneAction(action Action) Action { return domainaction.Clone(action) }
 
 // ActionSummary returns a compact human-readable assignment label.
-func ActionSummary(action Action) string {
-	action = normalizeAction(action)
-	switch action.Type {
-	case ActionKey:
-		return action.Key
-	case ActionText:
-		return action.Text
-	case ActionCombo:
-		return strings.Join(action.Keys, "+")
-	case ActionCommand:
-		return "cmd: " + action.Command
-	case ActionMacro:
-		return fmt.Sprintf("macro · %d", len(action.Macro))
-	default:
-		return "—"
-	}
-}
+func ActionSummary(action Action) string { return domainaction.Summary(action) }
 
 // LoadKeymap загружает конфигурацию из файла
 func LoadKeymap(filename string) (*KeymapConfig, error) {
@@ -508,104 +351,12 @@ func newLayer(name string, keys []string) LayerConfig {
 	return layer
 }
 
-func normalizeAction(action Action) Action {
-	action.Type = ActionType(strings.TrimSpace(string(action.Type)))
-	action.Key = normalizeKeyName(action.Key)
+func normalizeAction(action Action) Action { return domainaction.Normalize(action) }
 
-	if len(action.Keys) > 0 {
-		keys := make([]string, 0, len(action.Keys))
-		for _, key := range action.Keys {
-			normalized := normalizeKeyName(key)
-			if normalized != "" {
-				keys = append(keys, normalized)
-			}
-		}
-		action.Keys = keys
-	}
-
-	action.Command = strings.TrimSpace(action.Command)
-
-	if len(action.Macro) > 0 {
-		macro := make([]Action, 0, len(action.Macro))
-		for _, step := range action.Macro {
-			macro = append(macro, normalizeAction(step))
-		}
-		action.Macro = macro
-	}
-
-	return action
-}
-
-func validateAction(action Action) error {
-	switch action.Type {
-	case ActionKey:
-		if action.Key == "" {
-			return fmt.Errorf("key action requires a key")
-		}
-	case ActionText:
-		if action.Text == "" {
-			return fmt.Errorf("text action requires text")
-		}
-	case ActionCombo:
-		if len(action.Keys) < 2 {
-			return fmt.Errorf("combo action requires at least two keys")
-		}
-	case ActionCommand:
-		if action.Command == "" {
-			return fmt.Errorf("command action requires a command")
-		}
-	case ActionMacro:
-		if len(action.Macro) == 0 {
-			return fmt.Errorf("macro action requires at least one step")
-		}
-		for i, step := range action.Macro {
-			if err := validateAction(step); err != nil {
-				return fmt.Errorf("invalid macro step %d: %w", i, err)
-			}
-		}
-	default:
-		return fmt.Errorf("unknown action type: %s", action.Type)
-	}
-
-	return nil
-}
+func validateAction(action Action) error { return domainaction.Validate(action) }
 
 func parseActionShortcut(shortcut string) (Action, error) {
-	value := strings.TrimSpace(shortcut)
-	if value == "" {
-		return Action{}, fmt.Errorf("action shortcut is empty")
-	}
-
-	lowerValue := strings.ToLower(value)
-	if strings.HasPrefix(lowerValue, "text:") {
-		text := value[len("text:"):]
-		if text == "" {
-			return Action{}, fmt.Errorf("text shortcut is empty")
-		}
-		return Action{Type: ActionText, Text: text}, nil
-	}
-	if strings.HasPrefix(lowerValue, "cmd:") {
-		command := strings.TrimSpace(value[len("cmd:"):])
-		if command == "" {
-			return Action{}, fmt.Errorf("command shortcut is empty")
-		}
-		return Action{Type: ActionCommand, Command: command}, nil
-	}
-
-	if strings.HasPrefix(lowerValue, "command:") {
-		command := strings.TrimSpace(value[len("command:"):])
-		if command == "" {
-			return Action{}, fmt.Errorf("command shortcut is empty")
-		}
-		return Action{Type: ActionCommand, Command: command}, nil
-	}
-
-	parts := splitAndTrim(value, "+")
-	if len(parts) > 1 {
-		return Action{Type: ActionCombo, Keys: parts}, nil
-	}
-
-	return Action{Type: ActionKey, Key: normalizeKeyName(value)}, nil
+	return domainaction.ParseShortcut(shortcut)
 }
 
 func parseLayerReference(ref string) (int, error) {
