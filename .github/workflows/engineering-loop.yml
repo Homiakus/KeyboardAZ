@@ -1,0 +1,129 @@
+name: engineering-loop
+
+on:
+  push:
+    branches: [main, "agent/**"]
+    paths:
+      - "engineering/**"
+      - "go-app/tools/devloop/**"
+      - "go-app/.gremlins.yaml"
+      - "go-app/**/*_fuzz_test.go"
+      - "docs/PARETO_IMPLEMENTATION_PLAN_2026-08-26.md"
+      - "docs/PARETO_IMPLEMENTATION_PROGRESS_2026-08-26.md"
+      - "docs/ENGINEERING_AUTONOMY_LOOP_2026-08-27.md"
+      - ".github/workflows/engineering-loop.yml"
+  pull_request:
+    paths:
+      - "engineering/**"
+      - "go-app/**"
+      - "src/**"
+      - "include/**"
+      - "tests/**"
+      - ".github/workflows/engineering-loop.yml"
+  workflow_dispatch:
+    inputs:
+      run_mutation:
+        description: "Run full mutation test-of-tests gate"
+        required: false
+        default: true
+        type: boolean
+      mutation_critical:
+        description: "Apply critical mutation thresholds"
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "17 3 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  plan-contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go-app
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Check devloop formatting
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l ./tools/devloop)"
+          if [[ -n "$unformatted" ]]; then
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Test loop controller
+        run: go test -race ./tools/devloop
+      - name: Validate master-plan execution manifest
+        run: go run ./tools/devloop -cmd validate
+      - name: Select next executable plan stage
+        run: go run ./tools/devloop -cmd next | tee ../engineering-next.json
+      - name: Audit multidimensional edge space
+        run: go run ./tools/devloop -cmd edge-report | tee ../edge-space-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engineering-loop-state
+          path: |
+            engineering-next.json
+            edge-space-report.json
+
+  bounded-fuzz:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go-app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Protocol v3 coverage-guided fuzz
+        run: go test ./transport -run=^$ -fuzz=FuzzDecodeV3 -fuzztime=20s
+      - name: CDC parser coverage-guided fuzz
+        run: go test ./serial -run=^$ -fuzz=FuzzParseCompactFormat -fuzztime=20s
+
+  mutation-test-of-tests:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_mutation) }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go-app
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Establish green baseline before mutation
+        run: go test -race ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./inputtrace ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/devloop
+      - name: Install pinned Gremlins
+        run: |
+          go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+          gremlins --version
+      - name: Mutate tests-of-tests target space
+        run: gremlins unleash --config=.gremlins.yaml --output=mutation-report.json
+      - name: Validate mutation actually ran and meets policy
+        shell: bash
+        run: |
+          test -s mutation-report.json
+          critical=""
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mutation_critical }}" == "true" ]]; then
+            critical="-critical"
+          fi
+          go run ./tools/devloop -cmd mutation-check -mutation-report mutation-report.json $critical
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-test-of-tests
+          path: go-app/mutation-report.json
