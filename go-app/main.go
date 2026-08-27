@@ -28,6 +28,7 @@ import (
 	"hapticpad-go-app/device"
 	"hapticpad-go-app/handler"
 	"hapticpad-go-app/layoutedit"
+	"hapticpad-go-app/protocol"
 	"hapticpad-go-app/serial"
 	"hapticpad-go-app/textinput"
 	"hapticpad-go-app/workspace"
@@ -345,7 +346,7 @@ func (a *App) startMessageProcessor() {
 	refreshTicker := time.NewTicker(time.Second)
 	defer refreshTicker.Stop()
 
-	var messages <-chan serial.ButtonMessage
+	var messages <-chan protocol.Event
 	var errorsCh <-chan error
 	if a.connectionRuntime != nil {
 		messages = a.connectionRuntime.Messages()
@@ -577,9 +578,9 @@ func (a *App) resolveStroke(language string, modifiers uint8, button int) (*conf
 	return textinput.ResolveStroke(language, modifiers, button)
 }
 
-func (a *App) handleMessage(msg serial.ButtonMessage) {
+func (a *App) handleMessage(msg protocol.Event) {
 	if a.coreState != nil {
-		decision := a.coreState.ApplyEvent(msg.Event())
+		decision := a.coreState.ApplyEvent(msg)
 		if decision.Captured != nil && a.captureSelections != nil {
 			select {
 			case a.captureSelections <- *decision.Captured:
