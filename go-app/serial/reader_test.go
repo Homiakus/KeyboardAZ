@@ -95,7 +95,7 @@ func TestParseV2SuccessImpliesSemanticValidity(t *testing.T) {
 		"v2,stroke,3,ru,9,17",
 		"v2,tap,4,enter",
 		"v2,language,5,en",
-		"v2,status,6,1,ru,3,21",
+		"v2,status,6,ru,1,3,21",
 		"v2,error,7,hid_send_failed,2",
 	}
 	for _, input := range valid {
