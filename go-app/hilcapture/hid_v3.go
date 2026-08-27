@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"hapticpad-go-app/handler"
 	"hapticpad-go-app/hidv3"
@@ -28,14 +29,15 @@ type Stats struct {
 // until Flush so no post-hoc file rewrite or timing heuristic is required.
 // A 10k-stroke HIL run is intentionally small enough for this bounded workflow.
 type HIDV3CSVObserver struct {
-	mu      sync.Mutex
-	writer  *latencyreport.DatasetWriter
-	samples []latencyreport.Sample
-	index   map[uint32]int
-	limit   int
-	flushed int
-	err     error
-	stats   Stats
+	mu        sync.Mutex
+	writer    *latencyreport.DatasetWriter
+	samples   []latencyreport.Sample
+	index     map[uint32]int
+	hostEpoch time.Time
+	limit     int
+	flushed   int
+	err       error
+	stats     Stats
 }
 
 func NewHIDV3CSVObserver(output io.Writer) (*HIDV3CSVObserver, error) {
@@ -58,10 +60,11 @@ func NewHIDV3CSVObserverWithLimit(output io.Writer, limit int) (*HIDV3CSVObserve
 		capacity = limit
 	}
 	return &HIDV3CSVObserver{
-		writer:  writer,
-		index:   make(map[uint32]int, capacity),
-		samples: make([]latencyreport.Sample, 0, capacity),
-		limit:   limit,
+		writer:    writer,
+		index:     make(map[uint32]int, capacity),
+		samples:   make([]latencyreport.Sample, 0, capacity),
+		hostEpoch: time.Now(),
+		limit:     limit,
 	}, nil
 }
 
@@ -69,8 +72,9 @@ func (o *HIDV3CSVObserver) ObserveHIDV3(observation hidv3.Observation) error {
 	if o == nil || o.writer == nil {
 		return fmt.Errorf("HID v3 HIL observer is not initialized")
 	}
-	if observation.HostReceivedAt.IsZero() {
-		return fmt.Errorf("HID v3 observation has no host receive timestamp")
+	t2, err := o.hostTimestampNS(observation.HostReceivedAt)
+	if err != nil {
+		return fmt.Errorf("HID v3 host receive timestamp: %w", err)
 	}
 
 	eventType, button, err := semanticFields(observation.Report)
@@ -80,7 +84,7 @@ func (o *HIDV3CSVObserver) ObserveHIDV3(observation hidv3.Observation) error {
 	sample := latencyreport.Sample{
 		Sequence:     observation.Report.Sequence,
 		T1FirmwareUS: observation.Report.EventTimestampUS,
-		T2HostRxNS:   observation.HostReceivedAt.UnixNano(),
+		T2HostRxNS:   t2,
 		EventType:    eventType,
 		Button:       button,
 		Modifiers:    observation.Report.Modifiers,
@@ -116,12 +120,22 @@ func (o *HIDV3CSVObserver) ObserveSendInput(observation handler.SendInputObserva
 		return
 	}
 
+	t3, err := o.hostTimestampNS(observation.CalledAt)
+	if err != nil {
+		o.mu.Lock()
+		if o.err == nil {
+			o.err = fmt.Errorf("SendInput host timestamp: %w", err)
+		}
+		o.mu.Unlock()
+		return
+	}
+
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.err != nil {
 		return
 	}
-	if !observation.Trace.Valid() || observation.CalledAt.IsZero() {
+	if !observation.Trace.Valid() {
 		o.err = fmt.Errorf("invalid SendInput observation for HIL capture")
 		return
 	}
@@ -138,11 +152,28 @@ func (o *HIDV3CSVObserver) ObserveSendInput(observation handler.SendInputObserva
 		o.err = fmt.Errorf("duplicate SendInput observation for sequence %d", observation.Trace.Sequence)
 		return
 	}
-	o.samples[index].T3SendInputNS = observation.CalledAt.UnixNano()
+	o.samples[index].T3SendInputNS = t3
 	o.stats.SendInputObserved++
 	if !observation.Success {
 		o.stats.SendInputFailures++
 	}
+}
+
+// hostTimestampNS keeps T2 and T3 in one process-monotonic clock domain. The
+// serialized value is elapsed nanoseconds since observer construction; it is
+// deliberately not Unix wall time and is therefore immune to wall-clock jumps.
+func (o *HIDV3CSVObserver) hostTimestampNS(at time.Time) (int64, error) {
+	if at.IsZero() {
+		return 0, fmt.Errorf("timestamp is zero")
+	}
+	elapsed := at.Sub(o.hostEpoch)
+	if elapsed < 0 {
+		return 0, fmt.Errorf("timestamp precedes HIL host epoch")
+	}
+	if elapsed == 0 {
+		return 1, nil
+	}
+	return elapsed.Nanoseconds(), nil
 }
 
 func (o *HIDV3CSVObserver) Err() error {
