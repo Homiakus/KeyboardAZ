@@ -16,15 +16,6 @@ jobs:
         working-directory: go-app
     steps:
       - uses: actions/checkout@v4
-      - name: Snapshot source for GUI migration
-        uses: actions/upload-artifact@v4
-        with:
-          name: keyboardaz-source-migration
-          path: |
-            go-app
-            docs
-            README.md
-          retention-days: 1
       - uses: actions/setup-go@v5
         with:
           go-version-file: go-app/go.mod
@@ -33,6 +24,7 @@ jobs:
         shell: bash
         run: |
           files=(
+            main.go configurator.go configurator_editing.go configurator_capture.go
             tray_policy.go tray_policy_test.go tray_windows.go
             protocol/event.go protocol/event_test.go appcore/state.go appcore/state_test.go
             telemetry/health.go telemetry/latency.go telemetry/health_test.go
@@ -45,8 +37,10 @@ jobs:
             latencyreport/report.go latencyreport/report_test.go tools/latency/main.go
             layoutedit/session.go layoutedit/session_test.go layoutedit/diagnostics.go layoutedit/diagnostics_test.go
             layoutedit/catalog.go layoutedit/catalog_test.go layoutedit/preview.go layoutedit/preview_test.go
-            workspace/paths.go workspace/paths_test.go architecture/boundaries_test.go
-            serial/reader.go handler/actions.go handler/keyboard_windows.go handler/telemetry_test.go
+            workspace/paths.go workspace/paths_test.go
+            architecture/boundaries_test.go architecture/shell_boundaries_test.go
+            serial/reader.go serial/event.go
+            handler/actions.go handler/keyboard_windows.go handler/telemetry_test.go
           )
           unformatted="$(gofmt -l "${files[@]}")"
           if [[ -n "$unformatted" ]]; then
