@@ -6,12 +6,17 @@ import (
 	"testing"
 )
 
-func TestTextinputModelDoesNotOwnPersistence(t *testing.T) {
-	data, err := os.ReadFile("../textinput/config.go")
+func readTextinputSource(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile("../textinput/" + name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := string(data)
+	return string(data)
+}
+
+func TestTextinputModelDoesNotOwnPersistence(t *testing.T) {
+	source := readTextinputSource(t, "config.go")
 	for _, forbidden := range []string{
 		`"encoding/json"`,
 		`"os"`,
@@ -28,11 +33,7 @@ func TestTextinputModelDoesNotOwnPersistence(t *testing.T) {
 }
 
 func TestTextinputRepositoryOwnsValidatedPersistence(t *testing.T) {
-	data, err := os.ReadFile("../textinput/repository.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	source := string(data)
+	source := readTextinputSource(t, "repository.go")
 	for _, required := range []string{
 		"func LoadLayout(",
 		"func SaveLayout(",
@@ -42,6 +43,37 @@ func TestTextinputRepositoryOwnsValidatedPersistence(t *testing.T) {
 	} {
 		if !strings.Contains(source, required) {
 			t.Errorf("textinput repository lost invariant %q", required)
+		}
+	}
+}
+
+func TestTextinputModelDoesNotOwnRuntimeCompiler(t *testing.T) {
+	source := readTextinputSource(t, "config.go")
+	for _, forbidden := range []string{
+		`"sync/atomic"`,
+		"type compiledLayout struct",
+		"type Resolver struct",
+		"func compileLayout(",
+		"atomic.Pointer[compiledLayout]",
+	} {
+		if strings.Contains(source, forbidden) {
+			t.Errorf("textinput/config.go regained compiler concern %q", forbidden)
+		}
+	}
+}
+
+func TestTextinputCompilerPublishesImmutableSnapshots(t *testing.T) {
+	source := readTextinputSource(t, "compiler.go")
+	for _, required := range []string{
+		"type compiledLayout struct",
+		"atomic.Pointer[compiledLayout]",
+		"func NewResolver(",
+		"func (r *Resolver) Replace(",
+		"func compileLayout(",
+		"resolver.compiled.Store(compiled)",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("textinput compiler lost invariant %q", required)
 		}
 	}
 }
