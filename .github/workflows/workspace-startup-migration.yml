@@ -26,13 +26,14 @@ jobs:
         shell: pwsh
         run: |
           python .github/scripts/workspace_startup_switch.py
-          gofmt -w go-app/main.go go-app/startup_workspace.go
+          gofmt -w go-app/main.go go-app/main_helpers_test.go go-app/startup_workspace.go
       - name: Verify workspace boundary
         shell: pwsh
         run: |
           if (-not (Select-String -Path go-app/main.go -SimpleMatch -CaseSensitive 'paths, startupError := prepareWorkspace()')) { throw 'startup does not use canonical workspace preparation' }
           if (Select-String -Path go-app/main.go -SimpleMatch -CaseSensitive 'workspace.FromRoot(getConfigDir())') { throw 'legacy workspace remains composition root' }
           if (-not (Select-String -Path go-app/main.go -SimpleMatch -CaseSensitive 'return canonicalConfigDir()')) { throw 'tray/config directory is not canonical' }
+          if (-not (Select-String -Path go-app/main_helpers_test.go -SimpleMatch -CaseSensitive 'workspace.Default()')) { throw 'config path test still asserts a legacy folder name' }
       - name: Race-test workspace and application boundaries
         working-directory: go-app
         run: go test -race ./workspace ./workspacemigrate ./architecture .
@@ -52,7 +53,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add go-app/main.go
+          git add go-app/main.go go-app/main_helpers_test.go
           if (git diff --cached --quiet) { throw 'workspace startup switch produced no changes' }
           git commit -m "feat: migrate startup to canonical workspace"
           git push origin HEAD:main
