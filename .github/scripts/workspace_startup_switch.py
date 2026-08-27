@@ -54,3 +54,41 @@ if "filepath." not in source:
     source = source.replace(filepath_import, "", 1)
 
 path.write_text(source, encoding="utf-8")
+
+helpers_path = Path("go-app/main_helpers_test.go")
+helpers_path.write_text(
+    '''package main
+
+import (
+\t"testing"
+
+\t"hapticpad-go-app/workspace"
+)
+
+func TestCreateDarkThemeAndHelpers(t *testing.T) {
+\ttheme := createDarkTheme()
+\tif theme == nil {
+\t\tt.Fatalf("expected theme to be created")
+\t}
+\tif theme.Palette.Bg.A == 0 || theme.Palette.Fg.A == 0 {
+\t\tt.Fatalf("expected non-empty palette, got %+v", theme.Palette)
+\t}
+
+\tprocessMessagesApp := &App{}
+\tprocessMessagesApp.processMessages()
+
+\tconfigDir := getConfigDir()
+\tif configDir == "" {
+\t\tt.Fatalf("expected config dir to be non-empty")
+\t}
+\tcanonical, err := workspace.Default()
+\tif err != nil {
+\t\tt.Fatalf("resolve canonical workspace: %v", err)
+\t}
+\tif configDir != canonical.Root {
+\t\tt.Fatalf("expected canonical config dir %q, got %q", canonical.Root, configDir)
+\t}
+}
+''',
+    encoding="utf-8",
+)
