@@ -9,13 +9,13 @@ import (
 
 	"hapticpad-go-app/device"
 	"hapticpad-go-app/protocol"
-	appserial "hapticpad-go-app/serial"
 )
 
 var (
-	ErrNoStableIdentity = errors.New("no stable USB identity is available for unattended reconnect")
-	ErrDeviceNotFound   = errors.New("saved KeyboardAZ device was not found")
-	ErrAmbiguousDevice  = errors.New("multiple KeyboardAZ candidates require explicit user selection")
+	ErrNoStableIdentity  = errors.New("no stable USB identity is available for unattended reconnect")
+	ErrDeviceNotFound    = errors.New("saved KeyboardAZ device was not found")
+	ErrAmbiguousDevice   = errors.New("multiple KeyboardAZ candidates require explicit user selection")
+	ErrNoTransportOpener = errors.New("no transport opener configured for connection controller")
 )
 
 const defaultHandshakeTimeout = time.Second
@@ -25,7 +25,7 @@ type OpenFunc func(portName string) (Session, error)
 
 type ControllerOptions struct {
 	Reference        device.Identity
-	BaudRate         int
+	BaudRate         int // Kept for source compatibility; concrete transports own baud configuration.
 	HandshakeTimeout time.Duration
 	Discover         DiscoverFunc
 	Open             OpenFunc
@@ -42,8 +42,8 @@ type ControllerSnapshot struct {
 }
 
 // Controller combines stable device discovery, open/handshake and reconnect
-// policy while remaining independent from Gio. COM names are treated only as
-// ephemeral locators; Reference is the durable USB identity.
+// policy while remaining independent from Gio and concrete transports. COM
+// names are ephemeral locators; Reference is the durable USB identity.
 type Controller struct {
 	mu sync.RWMutex
 
@@ -58,10 +58,11 @@ type Controller struct {
 	now              func() time.Time
 }
 
+// NewController creates a policy-only controller. Production composition should
+// prefer NewControllerWithOptions and inject Open. Keeping this constructor
+// preserves source compatibility for lifecycle-only tests and callers that do
+// not open a session.
 func NewController(reference device.Identity, baudRate int) *Controller {
-	if baudRate <= 0 {
-		baudRate = 115200
-	}
 	return NewControllerWithOptions(ControllerOptions{
 		Reference: reference,
 		BaudRate:  baudRate,
@@ -79,12 +80,8 @@ func NewControllerWithOptions(options ControllerOptions) *Controller {
 	}
 	open := options.Open
 	if open == nil {
-		baudRate := options.BaudRate
-		if baudRate <= 0 {
-			baudRate = 115200
-		}
-		open = func(portName string) (Session, error) {
-			return appserial.NewReader(portName, baudRate)
+		open = func(string) (Session, error) {
+			return nil, ErrNoTransportOpener
 		}
 	}
 	handshakeTimeout := options.HandshakeTimeout
