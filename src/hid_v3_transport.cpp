@@ -23,17 +23,17 @@ namespace {
 // HID_REPORT_ID item at descriptor bytes 6..7. Keep the descriptor shape pinned
 // to that contract and fail compilation if it drifts.
 constexpr uint8_t kReportDescriptor[] = {
-    0x05, 0xFF,        // Usage Page (Vendor Defined 0xFF)
-    0x09, 0x01,        // Usage (1)
-    0xA1, 0x01,        // Collection (Application)
-    HID_REPORT_ID(1),  // Rewritten to the merged report ID by Arduino-Pico.
-    0x15, 0x00,        // Logical Minimum (0)
-    0x26, 0xFF, 0x00,  // Logical Maximum (255)
-    0x75, 0x08,        // Report Size (8 bits)
-    0x95, 0x10,        // Report Count (16 bytes)
-    0x09, 0x01,        // Usage (1)
-    0x81, 0x02,        // Input (Data, Variable, Absolute)
-    0xC0,              // End Collection
+    0x05, 0xFF,       // Usage Page (Vendor Defined 0xFF)
+    0x09, 0x01,       // Usage (1)
+    0xA1, 0x01,       // Collection (Application)
+    HID_REPORT_ID(1)  // TinyUSB macro already supplies its trailing comma.
+    0x15, 0x00,       // Logical Minimum (0)
+    0x26, 0xFF, 0x00, // Logical Maximum (255)
+    0x75, 0x08,       // Report Size (8 bits)
+    0x95, 0x10,       // Report Count (16 bytes)
+    0x09, 0x01,       // Usage (1)
+    0x81, 0x02,       // Input (Data, Variable, Absolute)
+    0xC0,             // End Collection
 };
 
 static_assert(kReportDescriptor[6] == 0x85, "Raw HID report ID item moved from Arduino-Pico expected offset");
