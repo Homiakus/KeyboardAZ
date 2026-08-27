@@ -117,7 +117,7 @@ func TestHIDV3CSVObserverRejectsTimestampBeforeEpoch(t *testing.T) {
 		t.Fatal(err)
 	}
 	observation := hidv3.Observation{
-		Report: transport.ReportV3{Type: transport.EventLanguage, Language: transport.LanguageEnglish, Sequence: 1},
+		Report:         transport.ReportV3{Type: transport.EventLanguage, Language: transport.LanguageEnglish, Sequence: 1},
 		HostReceivedAt: observer.hostEpoch.Add(-time.Nanosecond),
 	}
 	if err := observer.ObserveHIDV3(observation); err == nil {
