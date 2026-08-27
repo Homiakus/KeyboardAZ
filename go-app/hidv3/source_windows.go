@@ -298,7 +298,7 @@ func (r *Reader) readLoop() {
 			r.publishError(fmt.Errorf("decode Raw HID v3: %w", err))
 			continue
 		}
-		telemetry.Process().ObserveTransportMessage(event.Protocol, event.Sequence, event.Type, event.Firmware)
+		telemetry.Process().ObserveTransportMessageOn("hid-v3", event.Protocol, event.Sequence, event.Type, event.Firmware)
 		select {
 		case r.messages <- event:
 		case <-r.done:

@@ -47,14 +47,14 @@ type HealthSnapshot struct {
 }
 
 type sequenceStream struct {
-	protocol             int
-	firmware             string
-	rxTotal              uint64
-	lastSequence         uint32
-	sequenceInitialized  bool
-	sequenceGaps         uint64
-	sequenceDuplicates   uint64
-	sequenceEpochs       uint64
+	protocol            int
+	firmware            string
+	rxTotal             uint64
+	lastSequence        uint32
+	sequenceInitialized bool
+	sequenceGaps        uint64
+	sequenceDuplicates  uint64
+	sequenceEpochs      uint64
 }
 
 // Health owns bounded, thread-safe runtime telemetry for one process.
@@ -64,11 +64,11 @@ type Health struct {
 	protocol int
 	firmware string
 
-	transportRxTotal uint64
-	streams          map[string]*sequenceStream
-	lastStream       string
-	parseErrors      uint64
-	reconnects       uint64
+	transportRxTotal  uint64
+	streams           map[string]*sequenceStream
+	lastStream        string
+	parseErrors       uint64
+	reconnects        uint64
 	reconnectFailures uint64
 
 	realtimeQueueDepth         int
