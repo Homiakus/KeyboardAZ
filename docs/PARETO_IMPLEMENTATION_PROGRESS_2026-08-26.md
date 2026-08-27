@@ -4,192 +4,164 @@
 
 ## Статус
 
-Критические P0-этапы observability, stable identity, reconnect lifecycle, protocol-v3 foundation и архитектурного разделения host application реализованы. Toolchain и GUI stack модернизированы, firmware build воспроизводим и реально собирается в CI.
+Критические P0-этапы observability, stable USB identity, reconnect lifecycle, protocol-v3 foundation и архитектурного разделения host application реализованы. Toolchain и GUI stack модернизированы, firmware build воспроизводим и реально собирается в CI.
 
-**Production default остаётся CDC v2.** При этом экспериментальный Raw HID v3 path теперь реализован end-to-end: RP2040 firmware candidate, native Windows reader, canonical v3→`protocol.Event`, composite HID-realtime + CDC-control session и explicit host opt-in. Переключение default запрещено до физического A/B HIL.
+**Production default остаётся CDC v2.** Экспериментальный Raw HID v3 path реализован end-to-end: RP2040 firmware candidate, native Windows reader, canonical v3→`protocol.Event`, composite HID-realtime + CDC-control session и explicit host opt-in. Переключение default и изменение debounce запрещены до физического A/B HIL.
 
 ## Реализовано
 
-### P0-1 / P0-4 — runtime telemetry
+### P0 — runtime telemetry
 
-Пакет `go-app/telemetry` измеряет:
-
-- bounded latency window;
-- p50/p95/p99;
-- transport RX;
-- sequence gaps / duplicates / reboot epochs;
-- parse errors;
-- realtime queue depth/high-watermark/max age;
-- SendInput calls/failures;
-- reconnect success/failure.
+`go-app/telemetry` измеряет bounded latency window, p50/p95/p99, transport RX, sequence gaps/duplicates/reboot epochs, parse errors, reconnect success/failure, realtime queue pressure/age и SendInput calls/failures.
 
 Privacy invariant сохранён: содержимое введённого текста не логируется.
 
-#### Stream-aware sequence telemetry
+Sequence telemetry stream-aware: `cdc-v1`, `cdc-v2` и `hid-v3` имеют независимые sequence epochs/counters, поэтому interleaved CDC control/status не создаёт ложных HID packet-loss сигналов.
 
-После появления composite CDC + HID исправлен важный observability edge case: sequence numbers CDC-v2 и HID-v3 принадлежат разным wire streams и больше не сравниваются друг с другом.
-
-`HealthSnapshot.TransportStreams` хранит независимые counters для `cdc-v1`, `cdc-v2`, `hid-v3`; aggregate gaps/duplicates являются суммой корректных per-stream counters. Interleaved CDC status во время HID realtime не создаёт ложных packet-loss сигналов.
-
-### P0-3 — stable USB identity и безопасный reconnect
+### P0 — stable identity и reconnect lifecycle
 
 Реализованы:
 
 - `device.Identity{VID, PID, SerialNumber, Product}`;
 - detailed USB discovery;
 - persisted stable identity;
-- strict exact reconnect по VID/PID/serial;
-- ambiguous device refusal;
+- exact unattended reconnect по VID/PID/serial;
+- ambiguity refusal;
 - COM только как текущий locator;
-- protocol-v2 handshake до перехода в Ready;
-- reconnect FSM `Detached/Discovering/Opening/Handshaking/Ready/Degraded/Reconnecting`;
-- 250 ms first retry;
-- bounded backoff;
-- degraded probing вместо остановки после 30 ошибок;
-- pending handshake events replay без потери raced stroke.
+- protocol handshake до `Ready`;
+- reconnect FSM с bounded backoff и degraded probing;
+- pending event replay после handshake;
+- stale-session ownership protection.
 
-GUI legacy reconnect удалён. `connection.Runtime` — единственный владелец live session/recovery loop.
+`connection.Runtime` — единственный владелец live session/recovery loop. Legacy reconnect policy из GUI удалён.
 
-#### Stale-session ownership hardening
+### P0 — protocol v3 / Raw HID candidate
 
-Windows race gate выявил lifecycle edge case: EOF от намеренно закрытой старой session мог конкурировать с explicit reconnect и запускать recovery уже после замены session.
+Host и firmware используют одинаковый fixed 16-byte v3 report с strict validation, sequence и device timestamp, reserved bytes и без app-level CRC.
 
-Исправление:
+Firmware:
 
-- `Controller.StartRecoveryIfCurrent(failed, err)` делает compare-and-detach под lock;
-- stale EOF старой session игнорируется;
-- recovery может начать только текущая owned session;
-- regression test защищает replacement session.
+- `[env:pico]` остаётся production CDC-only;
+- `[env:pico-hid-v3]` — composite HID realtime + CDC control/diagnostics;
+- 1 ms HID polling;
+- caller-owned buffer, без heap/string formatting в encoder;
+- native wire-format tests;
+- оба UF2 реально собираются в permanent CI и имеют size budgets.
 
-### P0-2 — protocol v3 и Raw HID candidate
+Windows host:
 
-#### Wire protocol
+- native SetupAPI/HID backend без внешнего `hidapi.dll`;
+- identity-safe enumeration/selection;
+- Windows HID report → canonical `protocol.Event`;
+- malformed reports rejected;
+- opt-in через `KEYBOARDAZ_REALTIME_TRANSPORT=hid-v3`;
+- silent fallback запрещён.
 
-Host и firmware используют одинаковый fixed 16-byte report:
+### HIL — transport-aware A/B infrastructure
 
-- strict validation;
-- sequence + device timestamp;
-- reserved bytes;
-- no app-level CRC;
-- zero-allocation host encode benchmark;
-- firmware caller-owned buffer без heap/string formatting;
-- native byte-for-byte wire test.
+Инфраструктура для сравнения CDC-v2 и HID-v3 уже реализована.
 
-#### Firmware Raw HID v3
+`latencyreport.Dataset` поддерживает явную transport metadata:
 
-Добавлен feature-gated vendor HID transport на Arduino-Pico/TinyUSB:
+- `cdc-v2`;
+- `hid-v3`;
+- старый CSV принимается только как `legacy` и не может быть ошибочно использован как контролируемый A/B dataset;
+- mixed transport dataset отклоняется.
 
-- отдельный `[env:pico-hid-v3]`;
-- production `[env:pico]` остаётся CDC-only;
-- 1 ms HID polling interval;
-- CDC остаётся в composite device для commands/status/diagnostics;
-- HID переносит realtime semantic v3 reports;
-- external USB library не требуется;
-- pinned Arduino-Pico/platform contract защищает descriptor behavior.
+`CompareTransportDatasets` и `tools/latency-compare` реализуют promotion gate:
 
-Permanent CI собирает **оба** firmware profiles и проверяет UF2 size budgets.
+- минимум 10 000 samples на transport;
+- CDC-v2 обязан быть baseline, HID-v3 candidate;
+- zero sequence gaps/duplicates/out-of-order;
+- полное fixture E2E coverage;
+- HID p95 должен быть минимум на 20% лучше;
+- p99 не должен регрессировать.
 
-#### Native Windows Raw HID v3 host
-
-Добавлен `go-app/hidv3` без CGO и внешнего `hidapi.dll`:
-
-- HID enumeration через SetupAPI;
-- VID/PID через `HidD_GetAttributes`;
-- serial/product через `HidD_GetSerialNumberString` / `HidD_GetProductString`;
-- identity-safe selection, ambiguity refusal;
-- input через Windows `ReadFile`;
-- Windows report = report-ID byte + 16-byte KeyboardAZ v3 payload;
-- malformed/short/zero-ID reports rejected;
-- validated report преобразуется в canonical `protocol.Event`.
-
-Windows host implementation прошла `go test ./...`, targeted `-race`, `go vet ./...` и реальную GUI EXE build.
-
-#### Composite transport
-
-`connection.CompositeSession` разделяет роли:
-
-```text
-CDC v2     -> handshake / commands / status / diagnostics
-Raw HID v3 -> realtime semantic input
-```
-
-`Messages()` отдаёт HID channel напрямую, без дополнительной forwarding goroutine/queue на realtime hot path. Объединяются только error streams.
-
-При opt-in HID source открывается до CDC handshake, чтобы bounded HID queue уже принимала events и не возникало post-handshake окна потери нажатия. Если HID открыть нельзя, opt-in connection завершается явной ошибкой — silent fallback запрещён.
-
-#### Host feature flag
-
-Production behavior не изменён:
-
-```text
-KEYBOARDAZ_REALTIME_TRANSPORT unset / cdc-v2 -> CDC realtime
-KEYBOARDAZ_REALTIME_TRANSPORT=hid-v3       -> HID realtime + CDC control
-```
-
-Unknown mode даёт explicit error.
+Остался именно физический сбор сопоставимых datasets на устройстве; абсолютный E2E budget намеренно не выдумывается до baseline.
 
 ### Architecture — canonical protocol event
 
 `protocol.Event` — canonical application message.
 
 - CDC parser создаёт event напрямую;
-- `serial.ButtonMessage` — compatibility alias внутри serial API/tests;
-- v3 decoder переводит report в тот же event;
+- v3 decoder создаёт тот же event;
 - `connection.Session`, handshake, runtime, pending replay и application shell работают через `protocol.Event`;
-- production `connection` не импортирует `serial` или `hidv3`;
-- concrete adapters инжектируются только в composition root.
+- `connection` не импортирует concrete `serial`/`hidv3` transport packages;
+- adapters инжектируются composition root.
 
-### Architecture — application state
+### Architecture — appcore является semantic authority
 
-Добавлен `appcore.State`:
+`appcore.State` теперь единственный источник protocol/firmware/language/modifier/button semantic state.
 
-- transport/UI-independent semantic state;
-- thread-safe snapshot;
-- connection state projection;
-- one-shot physical capture;
-- captured input возвращает `SuppressExecution`, поэтому настройка не запускает назначенное действие.
+Завершено:
 
-Полная миграция dashboard read model на `appcore.Snapshot` ещё впереди: часть presentation state пока дублируется в `App`.
+- dashboard `SnapshotState()` читает semantic state из `appcore.Snapshot`;
+- configurator active-key indication читает `appcore`;
+- дубли `protocolVersion`, `firmwareVersion`, `currentLanguage`, `currentMode`, `currentModifiers`, `activeThumbMask`, `activeButtonsMask`, `activeButtons` физически удалены из `App`;
+- reconnect/disconnect/capture обновляют canonical state;
+- one-shot capture подавляет execution назначенного действия;
+- permanent architecture fitness test запрещает вернуть semantic cache в GUI shell.
+
+`App` хранит только presentation/lifecycle state, который действительно относится к shell: history, selected port, errors и legacy-v1 layer.
+
+### Architecture — action domain
+
+Action model вынесена в отдельный `go-app/action` domain package.
+
+`handler`, `textinput`, `layoutedit` и configurator работают через domain `action.Action`; `config` больше не является владельцем action semantics и сохраняет compatibility surface там, где это ещё нужно для старого API/JSON.
+
+### Architecture — textinput split
+
+`textinput` больше не является монолитным model+storage+compiler файлом:
+
+- `config.go` — model/defaults/profile semantics;
+- `repository.go` — validated JSON/filesystem persistence;
+- `compiler.go` — immutable compiled layout и lock-free resolver publication.
+
+Architecture tests запрещают вернуть filesystem/JSON persistence или runtime compiler state обратно в model file.
 
 ### Architecture / UX — layoutedit application layer
 
-`layoutedit.Session` стал write boundary для configurator:
+`layoutedit.Session` — write boundary configurator:
 
 - atomic validated mutations;
 - undo/redo;
 - commit/revert;
 - binding/thumb editing;
-- reset binding;
 - profile CRUD;
-- copy/paste binding;
+- copy/paste;
 - bulk mode copy;
-- undoable import replacement;
-- diagnostics;
-- action preset search;
-- import preview.
+- import preview + undoable replacement;
+- diagnostics и preset search.
 
-Gio configurator больше не вызывает direct `textinput.SetBinding/SetThumbTap/DuplicateProfile/DeleteProfile`.
+Gio configurator больше не вызывает direct low-level layout mutations.
 
 ### Configurator UX
 
-Реализованы:
+Реализованы responsive wide/compact layout, capture физической кнопки, Undo/Redo, Copy/Paste, searchable presets, diagnostics, import preview/confirm/cancel, дополнительное подтверждение dangerous command/macro test и live apply через `layoutedit.Session`.
 
-- responsive wide/compact layout;
-- capture физической кнопки для настройки;
-- Undo / Redo;
-- Copy / Paste;
-- searchable presets;
-- diagnostics missing/duplicate/exec;
-- preview + confirm/cancel импорта;
-- дополнительное подтверждение test для command/macro;
-- live apply с undoable session;
-- advanced raw editor сохранён для power users.
+### Workspace — production migration завершена
 
-### Workspace
+Production workspace переведён на единый policy:
 
-Добавлен единый `workspace.Paths` для layout, legacy keymap, device identity, exports и drafts.
+- Windows: `%LOCALAPPDATA%\KeyboardAZ`;
+- остальные платформы: стандартный user config directory + `KeyboardAZ`;
+- layout, legacy keymap, device identity, exports и drafts используют один `workspace.Paths`.
 
-Пока root сохраняет обратную совместимость с `%USERPROFILE%\.hapticpad`.
+При старте `prepareWorkspace()`:
+
+1. разрешает canonical root;
+2. создаёт требуемые каталоги;
+3. рассматривает `~/.hapticpad` только как legacy source;
+4. валидирует каждый legacy artifact существующим repository loader;
+5. копирует только в отсутствующий target — **never overwrite**;
+6. не удаляет legacy source, оставляя rollback;
+7. продолжает миграцию независимых валидных artifacts, даже если один повреждён;
+8. tray/open-config использует тот же canonical root.
+
+При невозможности определить canonical user directory startup fail-safe откатывается к legacy root с явным diagnostic, а не к случайному рабочему каталогу.
+
+Workspace migration покрыта tests/race/vet на Go 1.26 и Go 1.27 и защищена architecture fitness test.
 
 ### P1 — Go/Gio modernization
 
@@ -197,85 +169,51 @@ Release baseline:
 
 - language level `go 1.26.0`;
 - pinned toolchain `go1.26.7`;
-- CI compatibility gate реально запускает `go1.27.0` с `GOTOOLCHAIN=local`;
+- compatibility gate на `go1.27.0` с `GOTOOLCHAIN=local`;
 - Gio `v0.10.2`;
-- application переведён на current `app.Window` event API;
-- актуализированы `x/sys`, `x/text`, `x/image` и typesetting dependencies;
+- current `app.Window` event API;
+- актуализированные `x/sys`, `x/text`, `x/image` и typesetting dependencies;
 - GitHub Actions checkout/setup-go v7.
 
-### P1 — security/quality gates
+### P1 — quality/security/reproducibility
 
-Permanent quality workflow содержит:
+Permanent `quality` workflow включает:
 
-- recursive `gofmt` для всех Go source files;
-- Linux Go 1.26 race/vet, включая `hidv3` platform-neutral tests;
-- Go 1.27 compatibility race/vet;
-- Windows tests/race/vet, включая native `hidv3` build path;
-- pinned `govulncheck@v1.7.0`;
+- recursive `gofmt`;
+- Linux Go 1.26 race/vet;
+- Go 1.27 race/vet;
+- Windows tests/race/vet;
+- `govulncheck@v1.7.0`;
 - resolver/protocol benchmarks;
 - architecture fitness tests;
 - native firmware tests;
-- реальные PlatformIO builds для `pico` и `pico-hid-v3`.
+- реальные PlatformIO builds для `pico` и `pico-hid-v3`;
+- explicit workspace/workspacemigrate gates.
 
-### P1 — reproducible firmware build
-
-Проверена реальная RP2040 build chain:
+Firmware toolchain pinned:
 
 - PlatformIO Core `6.1.19`;
-- `platform-raspberrypi` pinned на `9c167c6b8aac4f4cfa6d55a0c4e5b848795150c0`;
-- production `pico` имеет UF2 growth budget 150 000 B;
-- experimental `pico-hid-v3` имеет отдельный budget 180 000 B;
-- оба профиля собираются в CI.
+- `platform-raspberrypi` commit `9c167c6b8aac4f4cfa6d55a0c4e5b848795150c0`;
+- CDC UF2 budget 150 000 B;
+- HID-v3 UF2 budget 180 000 B.
 
-### HIL — executable acceptance gate
+## Что намеренно ещё не менялось / реальный остаточный долг
 
-`latencyreport` и `go-app/tools/latency` превращают HIL CSV в machine pass/fail.
-
-Проверяются:
-
-- минимум samples;
-- sequence gaps / duplicates / out-of-order;
-- zero sequence rejected;
-- canonical button/modifier ranges;
-- timing sanity;
-- host/fixture timing coverage;
-- configurable p95/p99 budgets;
-- host RX -> SendInput p95 default gate = 1 ms.
-
-Абсолютный fixture E2E budget намеренно не фиксируется до реального baseline.
-
-### Architecture fitness tests
-
-CI фиксирует dependency direction и запрещает регрессии:
-
-- lower layers -> Gio/higher layers;
-- `connection -> serial`;
-- CDC-specific message type в runtime/handshake;
-- reconnect policy в `main`;
-- direct layout mutations в configurator.
-
-## Что намеренно ещё не менялось
-
-- debounce timings не снижались без HIL;
-- CDC v2 остаётся production default;
-- Raw HID v3 реализован, но **не назначен default**;
-- physical A/B HIL CDC-v2 vs HID-v3 ещё не выполнен;
-- firmware semantic state machine ещё не разделена на input/semantic/protocol/transport modules;
-- storage ещё не мигрирован в `%LOCALAPPDATA%`;
-- `config.Action` ещё не вынесен в отдельный domain package;
-- `textinput/config.go` ещё совмещает model/repository/defaults/profile/compiler;
-- process telemetry singleton ещё не заменён injected `HealthSink`;
-- часть semantic presentation state ещё дублируется между `App` и `appcore`.
+- physical CDC-v2 vs HID-v3 HIL ещё не выполнен;
+- CDC v2 поэтому остаётся production default;
+- debounce timings не снижались без измерений;
+- firmware semantic state machine ещё можно дополнительно разделить на input/semantic/protocol/transport modules;
+- process-level `telemetry.Process()` ещё используется рядом adapters и должен быть заменён injected `HealthSink`/recorder;
+- после telemetry injection можно сократить последние process-global dependencies и улучшить multi-device testability;
+- после физического baseline можно исследовать eager-press/defer-release debounce для main keys; thumb/modifier должны оставаться conservative до отдельного stress/HIL.
 
 ## Следующий Pareto-этап
 
-1. Добавить явную transport metadata в HIL dataset/report (`cdc-v2` / `hid-v3`) и A/B comparison output.
-2. Получить физический CDC-v2 baseline 10k+ strokes.
-3. Прошить `pico-hid-v3`, включить `KEYBOARDAZ_REALTIME_TRANSPORT=hid-v3` и собрать сопоставимый 10k+ dataset.
-4. Сравнить correctness + p50/p95/p99; делать HID default только при измеренном выигрыше без regression.
-5. После baseline исследовать eager-press/defer-release debounce; thumb/modifier оставить conservative до отдельного 100k-cycle HIL.
-6. Перевести оставшийся dashboard read model на `appcore.Snapshot` и удалить duplicated semantic state из `App`.
-7. Выделить `action` domain с compatibility aliases, затем разделить layout model/repository/compiler.
-8. Выполнить безопасную миграцию workspace в `%LOCALAPPDATA%`.
+1. Убрать process-global telemetry singleton из production components через injected recorder/`HealthSink`, сохранив compatibility constructors.
+2. Довести composition root до одного явно созданного health accumulator, общего для CDC/HID/connection/handler/SendInput.
+3. Добавить architecture test, запрещающий `telemetry.Process()` внутри transport/application components.
+4. После этого собрать физический CDC-v2 baseline 10k+ strokes и сопоставимый HID-v3 dataset.
+5. Сделать HID default только если promotion gate подтверждает correctness и измеренный tail-latency выигрыш.
+6. Только после baseline исследовать новый debounce policy.
 
-См. актуальный архитектурный аудит: `docs/MODULARITY_AND_CONFIGURABILITY_AUDIT_2026-08-27.md`.
+См. также `docs/PARETO_IMPLEMENTATION_PLAN_2026-08-26.md` и актуальный `docs/MODULARITY_AND_CONFIGURABILITY_AUDIT_2026-08-27.md`.
