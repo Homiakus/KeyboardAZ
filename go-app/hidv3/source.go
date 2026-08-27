@@ -37,19 +37,20 @@ type Observation struct {
 
 // Observer receives every successfully decoded HID-v3 report exactly once.
 // It is intentionally synchronous: an enabled HIL recorder can be lossless
-// instead of silently dropping observations under load. Production opens use a
-// nil observer and therefore pay no callback or buffering cost. Implementations
-// used during HIL should return promptly so they do not perturb input latency.
+// instead of silently dropping observations under load. Returning an error
+// fails the capture path closed rather than allowing a partial dataset to look
+// complete. Production opens use a nil observer and pay no callback cost.
 type Observer interface {
-	ObserveHIDV3(Observation)
+	ObserveHIDV3(Observation) error
 }
 
-type ObserverFunc func(Observation)
+type ObserverFunc func(Observation) error
 
-func (f ObserverFunc) ObserveHIDV3(observation Observation) {
-	if f != nil {
-		f(observation)
+func (f ObserverFunc) ObserveHIDV3(observation Observation) error {
+	if f == nil {
+		return nil
 	}
+	return f(observation)
 }
 
 // OpenOptions keeps instrumentation explicitly opt-in. A nil Recorder uses the
