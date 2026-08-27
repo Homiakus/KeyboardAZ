@@ -25,6 +25,7 @@
 
 #include "input_debounce.h"
 #include "input_semantics.h"
+#include "protocol_v2.h"
 #include "text_input_config.h"
 
 using namespace HapticpadTextInput;
@@ -68,25 +69,22 @@ uint32_t nextSequence() {
     return g_sequence;
 }
 
-void writeProtocolLine(const char* line) {
-    if (line == nullptr) {
+void writeProtocolBuffer(const char* buffer, size_t length) {
+    if (buffer == nullptr || length == 0U) {
         return;
     }
-    Serial.write(reinterpret_cast<const uint8_t*>(line), strlen(line));
+    Serial.write(reinterpret_cast<const uint8_t*>(buffer), length);
 }
 
 void sendError(const char* code, uint32_t value) {
     char buffer[112];
-    const int written = snprintf(
+    const size_t written = HapticpadProtocolV2::encodeError(
         buffer,
         sizeof(buffer),
-        "v2,error,%lu,%s,%lu\n",
-        static_cast<unsigned long>(nextSequence()),
-        code == nullptr ? "unknown" : code,
-        static_cast<unsigned long>(value));
-    if (written > 0 && static_cast<size_t>(written) < sizeof(buffer)) {
-        writeProtocolLine(buffer);
-    }
+        nextSequence(),
+        code,
+        value);
+    writeProtocolBuffer(buffer, written);
 }
 
 bool allowUserEvent(uint32_t nowMs) {
@@ -110,30 +108,24 @@ bool allowUserEvent(uint32_t nowMs) {
 
 void sendReady() {
     char buffer[128];
-    const int written = snprintf(
+    const size_t written = HapticpadProtocolV2::encodeReady(
         buffer,
         sizeof(buffer),
-        "v2,ready,%lu,%s,%s,%u,%u\n",
-        static_cast<unsigned long>(nextSequence()),
+        nextSequence(),
         kFirmwareVersion,
         languageCode(g_language),
-        static_cast<unsigned int>(kMainButtonCount),
-        static_cast<unsigned int>(kThumbButtonCount));
-    if (written > 0 && static_cast<size_t>(written) < sizeof(buffer)) {
-        writeProtocolLine(buffer);
-    }
+        kMainButtonCount,
+        kThumbButtonCount);
+    writeProtocolBuffer(buffer, written);
 }
 
 void sendArmed() {
     char buffer[48];
-    const int written = snprintf(
+    const size_t written = HapticpadProtocolV2::encodeArmed(
         buffer,
         sizeof(buffer),
-        "v2,armed,%lu\n",
-        static_cast<unsigned long>(nextSequence()));
-    if (written > 0 && static_cast<size_t>(written) < sizeof(buffer)) {
-        writeProtocolLine(buffer);
-    }
+        nextSequence());
+    writeProtocolBuffer(buffer, written);
 }
 
 void sendStroke(uint8_t button, uint8_t modifiers, uint32_t nowMs) {
@@ -142,17 +134,14 @@ void sendStroke(uint8_t button, uint8_t modifiers, uint32_t nowMs) {
     }
 
     char buffer[80];
-    const int written = snprintf(
+    const size_t written = HapticpadProtocolV2::encodeStroke(
         buffer,
         sizeof(buffer),
-        "v2,stroke,%lu,%s,%u,%u\n",
-        static_cast<unsigned long>(nextSequence()),
+        nextSequence(),
         languageCode(g_language),
-        static_cast<unsigned int>(modifiers),
-        static_cast<unsigned int>(button));
-    if (written > 0 && static_cast<size_t>(written) < sizeof(buffer)) {
-        writeProtocolLine(buffer);
-    }
+        modifiers,
+        button);
+    writeProtocolBuffer(buffer, written);
 }
 
 void sendTap(const char* action, uint32_t nowMs) {
@@ -161,28 +150,22 @@ void sendTap(const char* action, uint32_t nowMs) {
     }
 
     char buffer[72];
-    const int written = snprintf(
+    const size_t written = HapticpadProtocolV2::encodeTap(
         buffer,
         sizeof(buffer),
-        "v2,tap,%lu,%s\n",
-        static_cast<unsigned long>(nextSequence()),
+        nextSequence(),
         action);
-    if (written > 0 && static_cast<size_t>(written) < sizeof(buffer)) {
-        writeProtocolLine(buffer);
-    }
+    writeProtocolBuffer(buffer, written);
 }
 
 void sendLanguage() {
     char buffer[64];
-    const int written = snprintf(
+    const size_t written = HapticpadProtocolV2::encodeLanguage(
         buffer,
         sizeof(buffer),
-        "v2,language,%lu,%s\n",
-        static_cast<unsigned long>(nextSequence()),
+        nextSequence(),
         languageCode(g_language));
-    if (written > 0 && static_cast<size_t>(written) < sizeof(buffer)) {
-        writeProtocolLine(buffer);
-    }
+    writeProtocolBuffer(buffer, written);
 }
 
 uint32_t stableMainMask() {
@@ -207,18 +190,15 @@ uint8_t stableThumbMask() {
 
 void sendStatus() {
     char buffer[112];
-    const int written = snprintf(
+    const size_t written = HapticpadProtocolV2::encodeStatus(
         buffer,
         sizeof(buffer),
-        "v2,status,%lu,%s,%u,%u,%lu\n",
-        static_cast<unsigned long>(nextSequence()),
+        nextSequence(),
         languageCode(g_language),
-        g_inputsArmed ? 1U : 0U,
-        static_cast<unsigned int>(stableThumbMask()),
-        static_cast<unsigned long>(stableMainMask()));
-    if (written > 0 && static_cast<size_t>(written) < sizeof(buffer)) {
-        writeProtocolLine(buffer);
-    }
+        g_inputsArmed,
+        stableThumbMask(),
+        stableMainMask());
+    writeProtocolBuffer(buffer, written);
 }
 
 bool allInputsReleased() {
