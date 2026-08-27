@@ -65,10 +65,21 @@ type Manager struct {
 	nextAttempt time.Time
 	lastError   string
 	recovering  bool
+	health      telemetry.Recorder
 }
 
+// NewManager preserves the legacy process-level telemetry behavior.
 func NewManager() *Manager {
-	return &Manager{state: Detached}
+	return NewManagerWithRecorder(telemetry.Process())
+}
+
+// NewManagerWithRecorder creates an isolated reconnect policy owner whose
+// operational counters are written only to the supplied recorder.
+func NewManagerWithRecorder(recorder telemetry.Recorder) *Manager {
+	return &Manager{
+		state:  Detached,
+		health: telemetry.RecorderOrProcess(recorder),
+	}
 }
 
 func (m *Manager) Snapshot() Snapshot {
@@ -131,10 +142,11 @@ func (m *Manager) MarkReady() {
 	m.nextAttempt = time.Time{}
 	m.lastError = ""
 	m.recovering = false
+	health := m.health
 	m.mu.Unlock()
 
-	if wasRecovery {
-		telemetry.Process().RecordReconnect(true, nil)
+	if wasRecovery && health != nil {
+		health.RecordReconnect(true, nil)
 	}
 }
 
@@ -209,9 +221,12 @@ func (m *Manager) MarkAttemptFailed(now time.Time, err error) {
 		m.state = Reconnecting
 		m.nextAttempt = now.Add(retryDelay(attempts))
 	}
+	health := m.health
 	m.mu.Unlock()
 
-	telemetry.Process().RecordReconnect(false, err)
+	if health != nil {
+		health.RecordReconnect(false, err)
+	}
 }
 
 func (m *Manager) MarkDetached() {
