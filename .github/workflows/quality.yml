@@ -15,43 +15,49 @@ jobs:
       run:
         working-directory: go-app
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
-      - name: Check formatting of critical Go files
+      - name: Verify selected Go toolchain
+        run: |
+          go version
+          go env GOTOOLCHAIN
+      - name: Check formatting of all Go sources
         shell: bash
         run: |
-          files=(
-            main.go configurator.go configurator_editing.go configurator_capture.go
-            tray_policy.go tray_policy_test.go tray_windows.go
-            protocol/event.go protocol/event_test.go appcore/state.go appcore/state_test.go
-            telemetry/health.go telemetry/latency.go telemetry/health_test.go
-            device/identity.go device/discovery.go device/identity_test.go
-            device/discovery_additional_test.go device/store.go device/store_test.go device/store_replace_unix.go
-            connection/manager.go connection/manager_test.go
-            connection/handshake.go connection/handshake_test.go connection/controller.go connection/controller_test.go
-            connection/runtime.go connection/runtime_test.go connection/runtime_disconnect.go
-            transport/protocol_v3.go transport/protocol_v3_test.go
-            latencyreport/report.go latencyreport/report_test.go tools/latency/main.go
-            layoutedit/session.go layoutedit/session_test.go layoutedit/diagnostics.go layoutedit/diagnostics_test.go
-            layoutedit/catalog.go layoutedit/catalog_test.go layoutedit/preview.go layoutedit/preview_test.go
-            workspace/paths.go workspace/paths_test.go
-            architecture/boundaries_test.go architecture/shell_boundaries_test.go
-            serial/reader.go serial/event_test.go
-            handler/actions.go handler/keyboard_windows.go handler/telemetry_test.go
-          )
+          mapfile -d '' files < <(find . -type f -name '*.go' -print0)
           unformatted="$(gofmt -l "${files[@]}")"
           if [[ -n "$unformatted" ]]; then
             echo "Files requiring gofmt:"
             echo "$unformatted"
-            gofmt -d "${files[@]}"
             exit 1
           fi
       - run: go test -race ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
       - run: go vet ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
       - run: go test -bench=. -benchmem ./textinput ./transport
+
+  go-1-27-compat:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+    defaults:
+      run:
+        working-directory: go-app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.0
+          cache-dependency-path: go-app/go.sum
+      - name: Verify Go 1.27 is actually used
+        shell: bash
+        run: |
+          go version | grep 'go1.27.0'
+          test "$(go env GOTOOLCHAIN)" = "local"
+      - run: go test -race ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
+      - run: go vet ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
 
   windows-desktop:
     runs-on: windows-latest
@@ -60,20 +66,28 @@ jobs:
         shell: pwsh
         working-directory: go-app
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
+      - name: Verify selected Go toolchain
+        run: |
+          go version
+          go env GOTOOLCHAIN
       - run: go test ./config ./serial ./textinput ./handler ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
       - run: go test -race ./protocol ./appcore ./telemetry ./handler ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture
       - run: go test .
       - run: go vet ./...
+      - name: Vulnerability scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          govulncheck ./...
       - run: New-Item -ItemType Directory -Force ../dist | Out-Null
       - run: go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../dist/KeyboardAZ.exe .
 
   firmware-native:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: bash ./tests/run_native_firmware_tests.sh
