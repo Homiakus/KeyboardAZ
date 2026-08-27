@@ -51,9 +51,35 @@ func TestMainDoesNotOwnSerialReconnectPolicy(t *testing.T) {
 	}
 }
 
+func TestConnectionRuntimeAndHandshakeUseProtocolEvents(t *testing.T) {
+	for _, name := range []string{
+		filepath.Join("connection", "runtime.go"),
+		filepath.Join("connection", "handshake.go"),
+	} {
+		content := readModuleSource(t, name)
+		for _, forbidden := range []string{
+			"hapticpad-go-app/serial",
+			"serial.ButtonMessage",
+			"appserial.ButtonMessage",
+		} {
+			if strings.Contains(content, forbidden) {
+				t.Errorf("%s leaks CDC-specific message type through lifecycle boundary: %q", name, forbidden)
+			}
+		}
+		if !strings.Contains(content, "protocol.Event") {
+			t.Errorf("%s does not expose the canonical protocol.Event boundary", name)
+		}
+	}
+}
+
 func readSource(t *testing.T, name string) string {
 	t.Helper()
-	path := filepath.Join("..", name)
+	return readModuleSource(t, name)
+}
+
+func readModuleSource(t *testing.T, relative string) string {
+	t.Helper()
+	path := filepath.Join("..", relative)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
