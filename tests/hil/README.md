@@ -53,7 +53,48 @@ T4  test target подтверждает полученный synthetic input fi
 - expected strokes = observed strokes;
 - нет перестановки sequence;
 - нет переполнения realtime queue;
-- `SendInputFailures = 0` для target процесса одинакового integrity level.
+- `SendInputFailures = 0` для target процесса одинакового integrity level;
+- timestamp пары не идут назад во времени;
+- обязательные timing stages имеют полное покрытие.
+
+### Машинный acceptance gate
+
+Из корня `go-app`:
+
+```powershell
+go run ./tools/latency `
+  -input ..\tests\hil\runs\cdc-v2-baseline.csv `
+  -min-samples 10000 `
+  -require-host-timing=true `
+  -max-host-p95-us 1000
+```
+
+Для серии с полным fixture E2E:
+
+```powershell
+go run ./tools/latency `
+  -input ..\tests\hil\runs\candidate.csv `
+  -min-samples 10000 `
+  -require-host-timing=true `
+  -require-fixture-e2e=true `
+  -max-host-p95-us 1000 `
+  -max-host-p99-us 2000 `
+  -max-e2e-p95-us <baseline-derived-budget> `
+  -max-e2e-p99-us <baseline-derived-budget>
+```
+
+Exit code `0` означает прохождение gate. Exit code `1` означает измеренный acceptance failure; JSON содержит `gate_failures` с конкретными причинами. Parse/configuration errors завершаются кодом `2`.
+
+Analyzer всегда запрещает:
+
+- sequence `0`;
+- button вне `-1..21`;
+- неизвестные modifier bits вне `0x0F`;
+- отрицательные timestamps;
+- `T3 < T2` и `T4 < T0` как валидные latency samples;
+- gaps, duplicates и out-of-order sequence в прошедшей серии.
+
+Host RX -> SendInput p95 budget по умолчанию равен **1 ms**. Абсолютный fixture E2E budget намеренно не зашит в код до получения физического baseline.
 
 ## 5. A/B сравнение
 
