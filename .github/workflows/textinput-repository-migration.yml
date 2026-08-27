@@ -39,21 +39,8 @@ jobs:
               source = source.replace(imp, '', 1)
           path.write_text(source, encoding='utf-8')
 
-          repository = '''package textinput
-
-import (
-    "encoding/json"
-    "fmt"
-    "os"
-    "path/filepath"
-    "strings"
-)
-
-// File persistence is deliberately isolated from the layout model/compiler so
-// storage policy can evolve without pulling filesystem concerns into the hot
-// resolver and editing domain.
-''' + persistence
-          Path('go-app/textinput/repository.go').write_text(repository, encoding='utf-8')
+          header = 'package textinput\n\nimport (\n\t"encoding/json"\n\t"fmt"\n\t"os"\n\t"path/filepath"\n\t"strings"\n)\n\n// File persistence is deliberately isolated from the layout model/compiler so\n// storage policy can evolve without pulling filesystem concerns into the hot\n// resolver and editing domain.\n'
+          Path('go-app/textinput/repository.go').write_text(header + persistence, encoding='utf-8')
           '@ | python -
           gofmt -w go-app/textinput/config.go go-app/textinput/repository.go
       - name: Verify persistence boundary
