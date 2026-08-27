@@ -41,8 +41,9 @@ jobs:
         shell: bash
         run: |
           gofmt -w main.go semantic_dispatch.go semantic_dispatch_test.go
-          go test ./appcore ./textinput .
-          go vet ./appcore ./textinput .
+          go test ./appcore ./textinput
+          go vet ./appcore ./textinput
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c -o /tmp/keyboardaz-semantic.test.exe .
       - name: Commit modern semantic dispatch
         run: |
           git config user.name "github-actions[bot]"
