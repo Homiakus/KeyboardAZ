@@ -91,3 +91,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: bash ./tests/run_native_firmware_tests.sh
+
+  firmware-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify reproducible firmware inputs
+        shell: bash
+        run: |
+          grep -Fx 'platform = https://github.com/maxgerhardt/platform-raspberrypi.git#9c167c6b8aac4f4cfa6d55a0c4e5b848795150c0' platformio.ini
+      - name: Install pinned PlatformIO Core
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check 'platformio==6.1.19'
+          pio --version | grep '6.1.19'
+      - name: Build RP2040 firmware
+        shell: bash
+        run: pio run -e pico
+      - name: Verify firmware output and size budget
+        shell: bash
+        run: |
+          test -s .pio/build/pico/firmware.uf2
+          bytes="$(stat --printf='%s' .pio/build/pico/firmware.uf2)"
+          test "$bytes" -le 150000
+          echo "firmware.uf2 bytes=$bytes"
+          sha256sum .pio/build/pico/firmware.uf2
