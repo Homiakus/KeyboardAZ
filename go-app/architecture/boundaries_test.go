@@ -44,6 +44,7 @@ func TestCorePackagesDoNotDependOnUIOrHigherLayers(t *testing.T) {
 						if strings.HasPrefix(imported, forbidden) {
 							t.Errorf("%s imports forbidden higher-layer dependency %q", file, imported)
 						}
+					}
 				}
 			}
 		})
