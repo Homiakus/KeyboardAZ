@@ -1,6 +1,7 @@
 package hidv3
 
 import (
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -64,7 +65,7 @@ func TestDecodeInputReportRejectsWrongSize(t *testing.T) {
 	}
 }
 
-func TestObserverFuncReceivesObservationExactly(t *testing.T) {
+func TestObserverFuncReceivesObservationAndReturnsErrors(t *testing.T) {
 	want := Observation{
 		Report: transport.ReportV3{
 			Type:             transport.EventTap,
@@ -75,17 +76,23 @@ func TestObserverFuncReceivesObservationExactly(t *testing.T) {
 		},
 		HostReceivedAt: time.Unix(123, 456),
 	}
+	wantErr := errors.New("disk full")
 	var got Observation
-	observer := ObserverFunc(func(observation Observation) {
+	observer := ObserverFunc(func(observation Observation) error {
 		got = observation
+		return wantErr
 	})
-	observer.ObserveHIDV3(want)
+	if err := observer.ObserveHIDV3(want); !errors.Is(err, wantErr) {
+		t.Fatalf("observer error=%v want %v", err, wantErr)
+	}
 	if got != want {
 		t.Fatalf("observer changed observation: got %+v want %+v", got, want)
 	}
 
 	var nilObserver ObserverFunc
-	nilObserver.ObserveHIDV3(want)
+	if err := nilObserver.ObserveHIDV3(want); err != nil {
+		t.Fatalf("nil observer returned error: %v", err)
+	}
 }
 
 func BenchmarkDecodeInputReport(b *testing.B) {
