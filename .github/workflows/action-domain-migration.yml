@@ -1,0 +1,96 @@
+name: action-domain-migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/action-domain-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Replace config action ownership with domain aliases
+        shell: pwsh
+        run: |
+          @'
+          import re
+          from pathlib import Path
+
+          path = Path('go-app/config/keymap.go')
+          s = path.read_text(encoding='utf-8')
+          s = s.replace('\t"bytes"\n', '')
+          marker = '\t"strings"\n)'
+          if marker not in s:
+              raise SystemExit('import marker not found')
+          s = s.replace(marker, '\t"strings"\n\n\tdomainaction "hapticpad-go-app/action"\n)')
+
+          s, n = re.subn(
+              r'// ActionType определяет тип действия\ntype ActionType string\n\nconst \(.*?\n\)\n\nconst MainButtonCount',
+              '''// ActionType and constants remain source-compatible aliases while the\n// canonical model lives in the action domain package.\ntype ActionType = domainaction.Type\n\nconst (\n\tActionKey     = domainaction.Key\n\tActionText    = domainaction.Text\n\tActionCombo   = domainaction.Combo\n\tActionCommand = domainaction.Command\n\tActionMacro   = domainaction.Macro\n)\n\nconst MainButtonCount''',
+              s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit(f'action type block replacements={n}')
+
+          s, n = re.subn(
+              r'// Action определяет действие для кнопки или сочетания\ntype Action struct \{.*?\n\}',
+              '// Action is a compatibility alias to the canonical domain model.\ntype Action = domainaction.Action',
+              s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit(f'action struct replacements={n}')
+
+          start = s.find('// UnmarshalJSON поддерживает короткую запись:')
+          end = s.find('// LoadKeymap загружает конфигурацию из файла')
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('public action codec block markers not found')
+          wrappers = '''// NormalizeAction returns a canonical copy suitable for storage and execution.\nfunc NormalizeAction(action Action) Action { return domainaction.Normalize(action) }\n\n// ValidateAction validates an action after normalization.\nfunc ValidateAction(action Action) error { return domainaction.Validate(action) }\n\n// ParseActionShortcut parses the same compact syntax accepted by keymap JSON.\nfunc ParseActionShortcut(shortcut string) (Action, error) { return domainaction.ParseShortcut(shortcut) }\n\n// CloneAction deep-copies macro and combo slices.\nfunc CloneAction(action Action) Action { return domainaction.Clone(action) }\n\n// ActionSummary returns a compact human-readable assignment label.\nfunc ActionSummary(action Action) string { return domainaction.Summary(action) }\n\n'''
+          s = s[:start] + wrappers + s[end:]
+
+          start = s.find('func normalizeAction(action Action) Action {')
+          end = s.find('func parseLayerReference(ref string) (int, error) {')
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('internal action helper block markers not found')
+          internal = '''func normalizeAction(action Action) Action { return domainaction.Normalize(action) }\n\nfunc validateAction(action Action) error { return domainaction.Validate(action) }\n\nfunc parseActionShortcut(shortcut string) (Action, error) {\n\treturn domainaction.ParseShortcut(shortcut)\n}\n\n'''
+          s = s[:start] + internal + s[end:]
+          path.write_text(s, encoding='utf-8')
+          '@ | python -
+          gofmt -w go-app/config/keymap.go go-app/action/action.go go-app/action/action_test.go
+      - name: Verify dependency inversion
+        shell: pwsh
+        run: |
+          if (-not (Select-String -Path go-app/config/keymap.go -SimpleMatch 'type Action = domainaction.Action')) { throw 'config Action alias missing' }
+          if (-not (Select-String -Path go-app/config/keymap.go -SimpleMatch 'domainaction.Normalize')) { throw 'config wrappers do not delegate to action domain' }
+          if (Select-String -Path go-app/action/*.go -SimpleMatch 'hapticpad-go-app/config') { throw 'action domain depends on legacy config' }
+      - name: Test action/config consumers
+        working-directory: go-app
+        run: go test -race ./action ./config ./textinput ./layoutedit ./handler
+      - name: Test full Windows application
+        working-directory: go-app
+        run: go test ./...
+      - name: Vet application
+        working-directory: go-app
+        run: go vet ./...
+      - name: Build Windows GUI
+        working-directory: go-app
+        run: |
+          New-Item -ItemType Directory -Force ../dist | Out-Null
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../dist/KeyboardAZ.exe .
+      - name: Commit action domain migration
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add go-app/action go-app/config/keymap.go
+          if (git diff --cached --quiet) { throw 'action migration produced no changes' }
+          git commit -m "refactor: make action domain canonical"
+          git push origin HEAD:main
