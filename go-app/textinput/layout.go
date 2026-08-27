@@ -7,7 +7,7 @@ import (
 	"math/bits"
 	"strings"
 
-	"hapticpad-go-app/config"
+	domainaction "hapticpad-go-app/action"
 )
 
 const MainButtonCount = 22
@@ -129,12 +129,12 @@ func validateModifiers(modifiers uint8) error {
 
 // ResolveStroke resolves through the immutable default profile. Applications
 // that support live editing should own a Resolver and call its methods instead.
-func ResolveStroke(language string, modifiers uint8, button int) (*config.Action, error) {
+func ResolveStroke(language string, modifiers uint8, button int) (*domainaction.Action, error) {
 	return defaultResolver.ResolveStroke(language, modifiers, button)
 }
 
 // ResolveTap resolves through the immutable default profile.
-func ResolveTap(action string) (*config.Action, error) {
+func ResolveTap(action string) (*domainaction.Action, error) {
 	return defaultResolver.ResolveTap(action)
 }
 

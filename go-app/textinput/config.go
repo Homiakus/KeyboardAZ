@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	domainaction "hapticpad-go-app/action"
 	"hapticpad-go-app/config"
 )
 
@@ -63,15 +64,15 @@ type LayoutConfig struct {
 }
 
 type Profile struct {
-	Name      string                                         `json:"name"`
-	Bindings  map[string]map[string]map[string]config.Action `json:"bindings"`
-	ThumbTaps map[string]config.Action                       `json:"thumb_taps"`
+	Name      string                                               `json:"name"`
+	Bindings  map[string]map[string]map[string]domainaction.Action `json:"bindings"`
+	ThumbTaps map[string]domainaction.Action                       `json:"thumb_taps"`
 }
 
 type compiledLayout struct {
-	strokes [2][16][MainButtonCount]config.Action
+	strokes [2][16][MainButtonCount]domainaction.Action
 	set     [2][16][MainButtonCount]bool
-	taps    map[string]config.Action
+	taps    map[string]domainaction.Action
 }
 
 type Resolver struct {
@@ -97,7 +98,7 @@ func (r *Resolver) Replace(layout *LayoutConfig) error {
 	return nil
 }
 
-func (r *Resolver) ResolveStroke(language string, modifiers uint8, button int) (*config.Action, error) {
+func (r *Resolver) ResolveStroke(language string, modifiers uint8, button int) (*domainaction.Action, error) {
 	if button < 0 || button >= MainButtonCount {
 		return nil, fmt.Errorf("button out of range: %d", button)
 	}
@@ -115,7 +116,7 @@ func (r *Resolver) ResolveStroke(language string, modifiers uint8, button int) (
 	return &compiled.strokes[languageID][modifiers][button], nil
 }
 
-func (r *Resolver) ResolveTap(action string) (*config.Action, error) {
+func (r *Resolver) ResolveTap(action string) (*domainaction.Action, error) {
 	compiled := r.compiled.Load()
 	if compiled == nil {
 		return nil, fmt.Errorf("layout resolver is not initialized")
@@ -143,14 +144,14 @@ func ModeByID(id string) (ModeDefinition, bool) {
 func DefaultLayoutConfig() *LayoutConfig {
 	profile := &Profile{
 		Name:      "Основной",
-		Bindings:  map[string]map[string]map[string]config.Action{},
-		ThumbTaps: map[string]config.Action{},
+		Bindings:  map[string]map[string]map[string]domainaction.Action{},
+		ThumbTaps: map[string]domainaction.Action{},
 	}
 
 	for _, language := range []string{LanguageEnglish, LanguageRussian} {
-		profile.Bindings[language] = map[string]map[string]config.Action{}
+		profile.Bindings[language] = map[string]map[string]domainaction.Action{}
 		for _, mode := range ModeDefinitions {
-			profile.Bindings[language][mode.ID] = map[string]config.Action{}
+			profile.Bindings[language][mode.ID] = map[string]domainaction.Action{}
 		}
 	}
 
@@ -174,15 +175,15 @@ func DefaultLayoutConfig() *LayoutConfig {
 			}
 			for mode, value := range defaults {
 				if value != "" {
-					profile.Bindings[language][mode][config.ButtonNames[button]] = config.Action{Type: config.ActionText, Text: value}
+					profile.Bindings[language][mode][config.ButtonNames[button]] = domainaction.Action{Type: domainaction.Text, Text: value}
 				}
 			}
 		}
 	}
 
-	profile.ThumbTaps["space"] = config.Action{Type: config.ActionKey, Key: "space"}
-	profile.ThumbTaps["enter"] = config.Action{Type: config.ActionKey, Key: "enter"}
-	profile.ThumbTaps["backspace"] = config.Action{Type: config.ActionKey, Key: "backspace"}
+	profile.ThumbTaps["space"] = domainaction.Action{Type: domainaction.Key, Key: "space"}
+	profile.ThumbTaps["enter"] = domainaction.Action{Type: domainaction.Key, Key: "enter"}
+	profile.ThumbTaps["backspace"] = domainaction.Action{Type: domainaction.Key, Key: "backspace"}
 
 	return &LayoutConfig{
 		Version:       LayoutConfigVersion,
@@ -280,7 +281,7 @@ func ValidateLayout(layout *LayoutConfig) error {
 					if _, ok := buttonIndex(buttonName); !ok {
 						return fmt.Errorf("profile %q mode %q has unknown button %q", id, modeID, buttonName)
 					}
-					if err := config.ValidateAction(action); err != nil {
+					if err := domainaction.Validate(action); err != nil {
 						return fmt.Errorf("profile %q %s/%s/%s: %w", id, language, modeID, buttonName, err)
 					}
 				}
@@ -290,7 +291,7 @@ func ValidateLayout(layout *LayoutConfig) error {
 			if tap != "space" && tap != "enter" && tap != "backspace" {
 				return fmt.Errorf("profile %q has unsupported thumb tap %q", id, tap)
 			}
-			if err := config.ValidateAction(action); err != nil {
+			if err := domainaction.Validate(action); err != nil {
 				return fmt.Errorf("profile %q thumb %q: %w", id, tap, err)
 			}
 		}
@@ -313,18 +314,18 @@ func CloneProfile(profile *Profile) *Profile {
 	if profile == nil {
 		return nil
 	}
-	clone := &Profile{Name: profile.Name, Bindings: map[string]map[string]map[string]config.Action{}, ThumbTaps: map[string]config.Action{}}
+	clone := &Profile{Name: profile.Name, Bindings: map[string]map[string]map[string]domainaction.Action{}, ThumbTaps: map[string]domainaction.Action{}}
 	for language, modes := range profile.Bindings {
-		clone.Bindings[language] = map[string]map[string]config.Action{}
+		clone.Bindings[language] = map[string]map[string]domainaction.Action{}
 		for mode, buttons := range modes {
-			clone.Bindings[language][mode] = map[string]config.Action{}
+			clone.Bindings[language][mode] = map[string]domainaction.Action{}
 			for button, action := range buttons {
-				clone.Bindings[language][mode][button] = config.CloneAction(action)
+				clone.Bindings[language][mode][button] = domainaction.Clone(action)
 			}
 		}
 	}
 	for tap, action := range profile.ThumbTaps {
-		clone.ThumbTaps[tap] = config.CloneAction(action)
+		clone.ThumbTaps[tap] = domainaction.Clone(action)
 	}
 	return clone
 }
@@ -338,32 +339,32 @@ func ProfileIDs(layout *LayoutConfig) []string {
 	return ids
 }
 
-func EnsureBindingMaps(profile *Profile, language, mode string) map[string]config.Action {
+func EnsureBindingMaps(profile *Profile, language, mode string) map[string]domainaction.Action {
 	if profile.Bindings == nil {
-		profile.Bindings = map[string]map[string]map[string]config.Action{}
+		profile.Bindings = map[string]map[string]map[string]domainaction.Action{}
 	}
 	if profile.Bindings[language] == nil {
-		profile.Bindings[language] = map[string]map[string]config.Action{}
+		profile.Bindings[language] = map[string]map[string]domainaction.Action{}
 	}
 	if profile.Bindings[language][mode] == nil {
-		profile.Bindings[language][mode] = map[string]config.Action{}
+		profile.Bindings[language][mode] = map[string]domainaction.Action{}
 	}
 	return profile.Bindings[language][mode]
 }
 
-func GetBinding(layout *LayoutConfig, profileID, language, mode string, button int) (config.Action, bool) {
+func GetBinding(layout *LayoutConfig, profileID, language, mode string, button int) (domainaction.Action, bool) {
 	if layout == nil || button < 0 || button >= MainButtonCount {
-		return config.Action{}, false
+		return domainaction.Action{}, false
 	}
 	profile := layout.Profiles[profileID]
 	if profile == nil {
-		return config.Action{}, false
+		return domainaction.Action{}, false
 	}
 	action, ok := profile.Bindings[language][mode][config.ButtonNames[button]]
-	return config.CloneAction(action), ok
+	return domainaction.Clone(action), ok
 }
 
-func SetBinding(layout *LayoutConfig, profileID, language, mode string, button int, action *config.Action) error {
+func SetBinding(layout *LayoutConfig, profileID, language, mode string, button int, action *domainaction.Action) error {
 	if layout == nil || button < 0 || button >= MainButtonCount {
 		return fmt.Errorf("invalid button %d", button)
 	}
@@ -383,24 +384,24 @@ func SetBinding(layout *LayoutConfig, profileID, language, mode string, button i
 		delete(bindings, buttonName)
 		return nil
 	}
-	normalized := config.NormalizeAction(*action)
-	if err := config.ValidateAction(normalized); err != nil {
+	normalized := domainaction.Normalize(*action)
+	if err := domainaction.Validate(normalized); err != nil {
 		return err
 	}
-	bindings[buttonName] = config.CloneAction(normalized)
+	bindings[buttonName] = domainaction.Clone(normalized)
 	return nil
 }
 
-func GetThumbTap(layout *LayoutConfig, profileID, tap string) (config.Action, bool) {
+func GetThumbTap(layout *LayoutConfig, profileID, tap string) (domainaction.Action, bool) {
 	profile := layout.Profiles[profileID]
 	if profile == nil {
-		return config.Action{}, false
+		return domainaction.Action{}, false
 	}
 	action, ok := profile.ThumbTaps[tap]
-	return config.CloneAction(action), ok
+	return domainaction.Clone(action), ok
 }
 
-func SetThumbTap(layout *LayoutConfig, profileID, tap string, action *config.Action) error {
+func SetThumbTap(layout *LayoutConfig, profileID, tap string, action *domainaction.Action) error {
 	if tap != "space" && tap != "enter" && tap != "backspace" {
 		return fmt.Errorf("unsupported thumb tap %q", tap)
 	}
@@ -409,17 +410,17 @@ func SetThumbTap(layout *LayoutConfig, profileID, tap string, action *config.Act
 		return fmt.Errorf("profile %q does not exist", profileID)
 	}
 	if profile.ThumbTaps == nil {
-		profile.ThumbTaps = map[string]config.Action{}
+		profile.ThumbTaps = map[string]domainaction.Action{}
 	}
 	if action == nil || action.Type == "" {
 		delete(profile.ThumbTaps, tap)
 		return nil
 	}
-	normalized := config.NormalizeAction(*action)
-	if err := config.ValidateAction(normalized); err != nil {
+	normalized := domainaction.Normalize(*action)
+	if err := domainaction.Validate(normalized); err != nil {
 		return err
 	}
-	profile.ThumbTaps[tap] = config.CloneAction(normalized)
+	profile.ThumbTaps[tap] = domainaction.Clone(normalized)
 	return nil
 }
 
@@ -490,7 +491,7 @@ func compileLayout(layout *LayoutConfig) (*compiledLayout, error) {
 		return nil, err
 	}
 	profile := layout.Profiles[layout.ActiveProfile]
-	compiled := &compiledLayout{taps: map[string]config.Action{}}
+	compiled := &compiledLayout{taps: map[string]domainaction.Action{}}
 	for language, modes := range profile.Bindings {
 		languageID, _, err := languageIndex(language)
 		if err != nil {
@@ -506,13 +507,13 @@ func compileLayout(layout *LayoutConfig) (*compiledLayout, error) {
 				if !ok {
 					continue
 				}
-				compiled.strokes[languageID][mode.Modifiers][button] = config.CloneAction(config.NormalizeAction(action))
+				compiled.strokes[languageID][mode.Modifiers][button] = domainaction.Clone(domainaction.Normalize(action))
 				compiled.set[languageID][mode.Modifiers][button] = true
 			}
 		}
 	}
 	for tap, action := range profile.ThumbTaps {
-		compiled.taps[tap] = config.CloneAction(config.NormalizeAction(action))
+		compiled.taps[tap] = domainaction.Clone(domainaction.Normalize(action))
 	}
 	return compiled, nil
 }
