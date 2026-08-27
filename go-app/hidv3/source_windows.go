@@ -322,7 +322,10 @@ func (r *Reader) readLoop() {
 			continue
 		}
 		if r.observer != nil {
-			r.observer.ObserveHIDV3(observation)
+			if err := r.observer.ObserveHIDV3(observation); err != nil {
+				r.publishError(fmt.Errorf("HIL observer: %w", err))
+				return
+			}
 		}
 		r.health.ObserveTransportMessageOn("hid-v3", event.Protocol, event.Sequence, event.Type, event.Firmware)
 		select {
