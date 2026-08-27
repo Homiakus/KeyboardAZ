@@ -7,6 +7,7 @@ on:
       - .github/workflows/firmware-hid-v3-routing-migration.yml
       - .github/scripts/firmware_hid_v3_routing_switch.py
       - .github/scripts/firmware_hid_v3_routing_compile_fix.py
+      - src/hid_v3_transport.cpp
 
 permissions:
   contents: write
@@ -34,6 +35,7 @@ jobs:
           grep -F 'HapticpadProtocolV3::EventType::Tap' src/MacroPad.ino
           grep -F 'HapticpadProtocolV3::EventType::Language' src/MacroPad.ino
           grep -F 'hid_send_failed' src/MacroPad.ino
+          grep -F '#include <tusb-hid.h>' src/hid_v3_transport.cpp
           grep -F 'firmware_hid_v3_state_machine_test.cpp' tests/run_native_firmware_tests.sh
       - name: Run native firmware contracts
         run: bash ./tests/run_native_firmware_tests.sh
