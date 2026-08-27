@@ -18,7 +18,8 @@ func TestHIDV3CSVObserverWritesCanonicalDataset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewHIDV3CSVObserver: %v", err)
 	}
-	receivedAt := time.Unix(1_800_000_000, 123_456_789)
+	receivedOffset := 123_456_789 * time.Nanosecond
+	receivedAt := observer.hostEpoch.Add(receivedOffset)
 	observation := hidv3.Observation{
 		Report: transport.ReportV3{
 			Type:             transport.EventStroke,
@@ -45,7 +46,7 @@ func TestHIDV3CSVObserverWritesCanonicalDataset(t *testing.T) {
 		t.Fatalf("unexpected dataset: %+v", dataset)
 	}
 	sample := dataset.Samples[0]
-	if sample.Sequence != 77 || sample.T1FirmwareUS != ^uint32(0) || sample.T2HostRxNS != receivedAt.UnixNano() {
+	if sample.Sequence != 77 || sample.T1FirmwareUS != ^uint32(0) || sample.T2HostRxNS != receivedOffset.Nanoseconds() {
 		t.Fatalf("timing metadata changed: %+v", sample)
 	}
 	if sample.T0FixtureNS != 0 || sample.T3SendInputNS != 0 || sample.T4FixtureNS != 0 {
@@ -66,7 +67,7 @@ func TestHIDV3CSVObserverCorrelatesSendInputBySequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hostReceivedAt := time.Unix(1_800_000_000, 100)
+	hostReceivedAt := observer.hostEpoch.Add(time.Second)
 	sendInputAt := hostReceivedAt.Add(750 * time.Microsecond)
 	if err := observer.ObserveHIDV3(hidv3.Observation{
 		Report: transport.ReportV3{
@@ -97,12 +98,30 @@ func TestHIDV3CSVObserverCorrelatesSendInputBySequence(t *testing.T) {
 		t.Fatal(err)
 	}
 	sample := dataset.Samples[0]
-	if sample.T2HostRxNS != hostReceivedAt.UnixNano() || sample.T3SendInputNS != sendInputAt.UnixNano() {
-		t.Fatalf("unexpected T2/T3 correlation: %+v", sample)
+	if sample.T2HostRxNS != int64(time.Second) || sample.T3SendInputNS != int64(time.Second+750*time.Microsecond) {
+		t.Fatalf("unexpected monotonic T2/T3 correlation: %+v", sample)
+	}
+	if got := time.Duration(sample.T3SendInputNS - sample.T2HostRxNS); got != 750*time.Microsecond {
+		t.Fatalf("host dispatch duration=%s", got)
 	}
 	stats := observer.Stats()
 	if stats.Captured != 1 || stats.HostTimingExpected != 1 || stats.SendInputObserved != 1 || stats.SendInputFailures != 0 || stats.Flushed != 1 {
 		t.Fatalf("unexpected capture stats: %+v", stats)
+	}
+}
+
+func TestHIDV3CSVObserverRejectsTimestampBeforeEpoch(t *testing.T) {
+	var buffer bytes.Buffer
+	observer, err := NewHIDV3CSVObserver(&buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation := hidv3.Observation{
+		Report: transport.ReportV3{Type: transport.EventLanguage, Language: transport.LanguageEnglish, Sequence: 1},
+		HostReceivedAt: observer.hostEpoch.Add(-time.Nanosecond),
+	}
+	if err := observer.ObserveHIDV3(observation); err == nil {
+		t.Fatal("expected pre-epoch timestamp rejection")
 	}
 }
 
@@ -114,7 +133,7 @@ func TestHIDV3CSVObserverDetectsUnmatchedSendInput(t *testing.T) {
 	}
 	observer.ObserveSendInput(handler.SendInputObservation{
 		Trace:    handler.InputTrace{Transport: latencyreport.TransportHIDV3, Sequence: 44},
-		CalledAt: time.Now(),
+		CalledAt: observer.hostEpoch.Add(time.Millisecond),
 		Success:  true,
 	})
 	if observer.Err() == nil {
@@ -141,7 +160,7 @@ func TestHIDV3CSVObserverMapsNonStrokeWithoutFakeButton(t *testing.T) {
 		if eventType == transport.EventTap {
 			report.ButtonOrAction = uint8(transport.TapEnter)
 		}
-		if err := observer.ObserveHIDV3(hidv3.Observation{Report: report, HostReceivedAt: time.Unix(100, 0)}); err != nil {
+		if err := observer.ObserveHIDV3(hidv3.Observation{Report: report, HostReceivedAt: observer.hostEpoch.Add(time.Millisecond)}); err != nil {
 			t.Fatal(err)
 		}
 		if err := observer.Flush(); err != nil {
@@ -179,7 +198,7 @@ func TestHIDV3CSVObserverEnforcesCaptureLimitBeforeExtraSample(t *testing.T) {
 				Sequence:         sequence,
 				EventTimestampUS: sequence * 10,
 			},
-			HostReceivedAt: time.Unix(100, int64(sequence)),
+			HostReceivedAt: observer.hostEpoch.Add(time.Duration(sequence) * time.Millisecond),
 		}
 	}
 	if err := observer.ObserveHIDV3(makeObservation(1)); err != nil {
