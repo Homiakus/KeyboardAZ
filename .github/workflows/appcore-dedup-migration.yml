@@ -39,9 +39,9 @@ jobs:
             'firmwareVersion  string',
             'activeButtons    []int'
           )) {
-            if (Select-String -Path go-app/main.go -SimpleMatch $declaration) { throw "App still owns semantic field declaration: $declaration" }
+            if (Select-String -Path go-app/main.go -SimpleMatch -CaseSensitive $declaration) { throw "App still owns semantic field declaration: $declaration" }
           }
-          if (-not (Select-String -Path go-app/main.go -SimpleMatch 'CurrentLanguage: semantic.Language')) { throw 'snapshot is not appcore-backed' }
+          if (-not (Select-String -Path go-app/main.go -SimpleMatch -CaseSensitive 'CurrentLanguage: semantic.Language')) { throw 'snapshot is not appcore-backed' }
       - name: Test shell and core under race detector
         working-directory: go-app
         run: go test -race ./appcore ./protocol ./textinput ./architecture .
