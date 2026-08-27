@@ -22,7 +22,7 @@ func newKeyboardWithRecorder(recorder telemetry.Recorder) Keyboard {
 
 func newKeyboardWithOptions(recorder telemetry.Recorder, observer SendInputObserver) Keyboard {
 	return &WindowsKeyboard{
-		health:    telemetry.RecorderOrProcess(recorder),
+		health:   telemetry.RecorderOrProcess(recorder),
 		observer: observer,
 	}
 }
