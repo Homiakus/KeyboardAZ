@@ -174,18 +174,49 @@ GitHub Actions дополнительно:
 - отдельно собирает **experimental `pico-hid-v3`** firmware;
 - запускает native firmware simulation.
 
-## Конфигурация
+### План-ориентированный engineering loop
 
-Текущий совместимый workspace находится в:
+Главный Pareto-план имеет исполняемое состояние в `engineering/loop.json`, а граничные случаи моделируются как многомерное пространство в `engineering/edge-space.json`.
 
-```text
-%USERPROFILE%\.hapticpad\keymap.json
-%USERPROFILE%\.hapticpad\layout-v2.json
+Из `go-app`:
+
+```powershell
+# проверить schema, DAG этапов, gates и edge-space
+go run ./tools/devloop -cmd validate
+
+# выбрать следующий незаблокированный этап главного плана
+go run ./tools/devloop -cmd next
+
+# увидеть размер многомерного пространства и critical scenarios
+go run ./tools/devloop -cmd edge-report
+
+# быстрый race/vet gate
+go run ./tools/devloop -cmd gate -gate fast
+
+# единственный автоматически разрешённый deterministic autofix
+go run ./tools/devloop -cmd safe-fix
+
+# проверить лимиты bounded semantic repair
+go run ./tools/devloop -cmd verify-diff -base HEAD~1
 ```
 
-`workspace.Paths` централизует layout, keymap, USB identity, exports и drafts; поэтому будущая миграция в `%LOCALAPPDATA%` не требует менять UI в нескольких местах.
+`.github/workflows/engineering-loop.yml` независимо проверяет plan contract, запускает coverage-guided fuzzing и weekly/manual mutation test-of-tests через pinned Go Gremlins. Mutation report обязан быть непустым и проходит отдельный policy gate; физический HIL этим не подменяется.
 
-Папку можно открыть из контекстного меню трея.
+Полная спецификация цикла: `docs/ENGINEERING_AUTONOMY_LOOP_2026-08-27.md`.
+
+## Конфигурация
+
+Production workspace на Windows находится в:
+
+```text
+%LOCALAPPDATA%\KeyboardAZ\keymap.json
+%LOCALAPPDATA%\KeyboardAZ\layout-v2.json
+%LOCALAPPDATA%\KeyboardAZ\device-identity.json
+```
+
+`workspace.Paths` — единственный источник path policy для layout, keymap, USB identity, exports и drafts. При первом старте legacy `~/.hapticpad` рассматривается только как источник безопасной миграции: валидные отсутствующие artifacts копируются по правилу **never overwrite**, legacy-каталог не удаляется и остаётся rollback source.
+
+Папку canonical workspace можно открыть из контекстного меню трея.
 
 ## Структура
 
@@ -203,6 +234,9 @@ go-app/appcore/               UI-independent application state
 go-app/layoutedit/            transactional configurator application layer
 go-app/workspace/             filesystem path policy
 go-app/serial/                CDC v1/v2 adapter
+go-app/tools/devloop/         executable engineering-loop controller
+engineering/loop.json         machine-readable master-plan execution state
+engineering/edge-space.json   multidimensional edge-case model
 go-app/                       Windows companion/UI composition
 manage.ps1                    единое меню сборки/прошивки
 KeyboardAZ.cmd                точка запуска меню Windows
@@ -215,6 +249,7 @@ legacy/                       архив несовместимой v1
 
 - `docs/PARETO_IMPLEMENTATION_PLAN_2026-08-26.md` — приоритетный план модернизации;
 - `docs/PARETO_IMPLEMENTATION_PROGRESS_2026-08-26.md` — фактический статус реализации;
+- `docs/ENGINEERING_AUTONOMY_LOOP_2026-08-27.md` — циклическая разработка, multidimensional edge-space, fuzz, mutation test-of-tests и controlled autofix;
 - `docs/MODULARITY_AND_CONFIGURABILITY_AUDIT_2026-08-27.md` — актуальный аудит архитектурных границ и UX настройки;
 - `docs/TEXT_INPUT_V2.md` — protocol/state machine;
 - `docs/UI_CONFIGURATOR_V2_2.md` — visual configurator;
@@ -227,3 +262,4 @@ legacy/                       архив несовместимой v1
 - Для end-to-end latency и изменения debounce нужны измерения на реальном устройстве.
 - Старые файлы в `legacy/` не следует использовать для protocol v2.
 - Перед переключением default transport требуется HIL A/B сравнение CDC v2 и HID v3 без correctness regression.
+- Engineering loop не имеет права синтетически объявлять физические HIL/SLO зелёными и не ослабляет gates ради автоматического исправления.
