@@ -67,6 +67,38 @@ cdc-v2,1002,812010000000,4320020,991010000000,991010132000,812013740000,stroke,4
 
 Для HID A/B используется тот же schema, но `transport=hid-v3`; fixture, hardware, debounce, OS/load profile и sample-generation procedure должны оставаться неизменными.
 
+## Анализ одной серии
+
+Из `go-app`:
+
+```powershell
+go run ./tools/latency -input ..\tests\hil\cdc-v2.csv -min-samples 10000 -require-fixture-e2e
+```
+
+JSON содержит `transport`, correctness counters, host и fixture distributions и gate result.
+
+## Machine-gated A/B
+
+После получения двух controlled datasets:
+
+```powershell
+go run ./tools/latency-compare `
+  -baseline ..\tests\hil\cdc-v2.csv `
+  -candidate ..\tests\hil\hid-v3.csv
+```
+
+Default promotion contract:
+
+- baseline обязан быть `cdc-v2`;
+- candidate обязан быть `hid-v3`;
+- минимум 10 000 samples в каждой серии;
+- ноль gaps / duplicates / out-of-order;
+- полный fixture E2E coverage;
+- HID fixture E2E p95 минимум на **20% ниже** CDC;
+- HID fixture E2E p99 не хуже CDC.
+
+Порог можно сделать строже параметрами `-min-p95-improvement-percent` и `-max-p99-regression-percent`, но ослаблять default contract для принятия решения о production promotion не следует без отдельного обоснования.
+
 ## Acceptance report
 
 Для каждой серии сохранять рядом:
@@ -86,13 +118,6 @@ cdc-v2,1002,812010000000,4320020,991010000000,991010132000,812013740000,stroke,4
 
 ## Controlled A/B rule
 
-Raw HID v3 нельзя делать default только потому, что среднее значение ниже. Перед promotion обе серии должны:
-
-1. пройти correctness gate без gaps/duplicates/out-of-order;
-2. иметь одинаковый либо сопоставимый sample count (целевой минимум 10 000);
-3. иметь одинаковый debounce profile и physical fixture procedure;
-4. иметь полный host timing coverage;
-5. не ухудшить p99;
-6. показать practically meaningful улучшение p50/p95 либо fixture E2E.
+Raw HID v3 нельзя делать default только потому, что среднее значение ниже. Перед promotion обе серии должны пройти machine gate и использовать одинаковые fixture/hardware/debounce/load условия.
 
 До выполнения этого правила `cdc-v2` остаётся production default.
