@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"hapticpad-go-app/handler"
 	"hapticpad-go-app/hidv3"
+	"hapticpad-go-app/inputtrace"
 	"hapticpad-go-app/latencyreport"
 	"hapticpad-go-app/transport"
 )
@@ -112,10 +112,11 @@ func (o *HIDV3CSVObserver) ObserveHIDV3(observation hidv3.Observation) error {
 	return nil
 }
 
-// ObserveSendInput implements handler.SendInputObserver. Only HID-v3 traces are
-// consumed; other transports may share the same handler without contaminating
-// this dataset. Observer callbacks never contain resolved text or key names.
-func (o *HIDV3CSVObserver) ObserveSendInput(observation handler.SendInputObservation) {
+// ObserveSendInput implements inputtrace.SendInputObserver. Only HID-v3 traces
+// are consumed; other transports may share the same handler without
+// contaminating this dataset. Observer callbacks never contain resolved text or
+// key names.
+func (o *HIDV3CSVObserver) ObserveSendInput(observation inputtrace.SendInputObservation) {
 	if o == nil || observation.Trace.Transport != latencyreport.TransportHIDV3 {
 		return
 	}
@@ -234,4 +235,4 @@ func semanticFields(report transport.ReportV3) (eventType string, button int, er
 }
 
 var _ hidv3.Observer = (*HIDV3CSVObserver)(nil)
-var _ handler.SendInputObserver = (*HIDV3CSVObserver)(nil)
+var _ inputtrace.SendInputObserver = (*HIDV3CSVObserver)(nil)
