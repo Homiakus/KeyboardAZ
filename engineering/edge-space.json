@@ -1,0 +1,342 @@
+{
+  "schema_version": 1,
+  "coverage_policy": {
+    "baseline_strength": 2,
+    "critical_strength": 3,
+    "exhaustive_dimensions": [
+      "protocol-event",
+      "sequence-state",
+      "transport-state"
+    ],
+    "rules": [
+      "Every changed behavior must cover its 1D boundaries.",
+      "Every changed subsystem must cover pairwise interactions with all directly coupled dimensions.",
+      "Critical transport, lifecycle, debounce, identity and concurrency paths require explicit 3-way scenarios.",
+      "Known catastrophic interactions are enumerated as named scenarios and are never replaced by random fuzzing alone.",
+      "Fuzzing augments deterministic matrices; it does not satisfy deterministic acceptance scenarios by itself."
+    ]
+  },
+  "dimensions": [
+    {
+      "id": "transport",
+      "values": ["cdc-v2", "hid-v3"]
+    },
+    {
+      "id": "transport-state",
+      "values": ["closed", "opening", "handshaking", "ready", "degraded", "reconnecting", "closing"]
+    },
+    {
+      "id": "protocol-event",
+      "values": ["ready", "armed", "status", "error", "language", "tap", "stroke", "unknown-modern"]
+    },
+    {
+      "id": "sequence-state",
+      "values": ["first", "contiguous", "gap", "duplicate", "out-of-order", "max-uint32", "wrap-to-one", "reboot-epoch"]
+    },
+    {
+      "id": "timestamp-state",
+      "values": ["zero-invalid", "normal", "near-wrap", "wrap", "host-before-device-uncomparable", "host-monotonic-valid"]
+    },
+    {
+      "id": "language",
+      "values": ["en", "ru", "invalid"]
+    },
+    {
+      "id": "modifier-mask",
+      "values": ["0", "shift", "number", "rare", "symbols", "shift-number", "shift-rare", "shift-symbols", "multi-mode-conflict", "unsupported-bit"]
+    },
+    {
+      "id": "physical-input",
+      "values": ["main-only", "thumb-only", "thumb-before-main", "same-scan-thumb-main", "multiple-thumbs", "stuck-main", "stuck-thumb", "repeat-backspace", "bounce-main", "bounce-thumb"]
+    },
+    {
+      "id": "debounce-time",
+      "values": ["press-minus-1us", "press-exact", "press-plus-1us", "release-minus-1us", "release-exact", "release-plus-1us", "micros-wrap"]
+    },
+    {
+      "id": "queue-pressure",
+      "values": ["empty", "normal", "high-watermark", "near-capacity", "producer-blocked", "background-full"]
+    },
+    {
+      "id": "concurrency",
+      "values": ["idle", "ui-render", "macro-delay", "command-exec", "reconnect", "capture-mode", "shutdown", "simultaneous-close-read"]
+    },
+    {
+      "id": "usb-topology",
+      "values": ["direct", "hub", "renumbered-com", "second-serial-device", "two-keyboardaz", "hot-unplug", "rapid-replug"]
+    },
+    {
+      "id": "identity-state",
+      "values": ["exact-vid-pid-serial", "vid-pid-only", "stale-serial", "ambiguous", "missing-serial", "different-product"]
+    },
+    {
+      "id": "report-shape",
+      "values": ["exact-16", "short", "long", "bad-version", "reserved-nonzero", "invalid-event", "invalid-button", "invalid-modifier", "zero-sequence"]
+    },
+    {
+      "id": "sendinput-result",
+      "values": ["full-success", "partial", "zero", "observer-failure", "not-actionable"]
+    },
+    {
+      "id": "configuration-state",
+      "values": ["default", "custom-valid", "missing-binding", "invalid-json", "unknown-action", "dangerous-command", "macro-nested", "import-conflict", "undo-redo-boundary"]
+    },
+    {
+      "id": "workspace-state",
+      "values": ["fresh", "legacy-only", "both-exist", "target-readonly", "legacy-corrupt", "partial-migration", "disk-full"]
+    },
+    {
+      "id": "process-state",
+      "values": ["first-instance", "second-instance", "explorer-restart", "cold-start", "crash-recovery", "system-suspend-resume"]
+    },
+    {
+      "id": "load-profile",
+      "values": ["idle", "cpu-load", "macro-load", "command-flood", "cdc-status-flood", "ui-heavy"]
+    },
+    {
+      "id": "fault-injection",
+      "values": ["none", "short-read", "read-error", "observer-error", "send-failure", "disk-write-error", "queue-saturation", "unexpected-eof"]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "sequence-epochs",
+      "strength": 3,
+      "axes": {
+        "transport": ["cdc-v2", "hid-v3"],
+        "sequence-state": ["gap", "duplicate", "out-of-order", "max-uint32", "wrap-to-one", "reboot-epoch"],
+        "protocol-event": ["ready", "status", "stroke", "tap", "language"]
+      },
+      "invariants": ["No false gap across uint32 wrap.", "Reboot creates a new epoch instead of billions of false losses.", "CDC and HID sequence streams are never mixed."]
+    },
+    {
+      "id": "protocol-malformed",
+      "strength": 3,
+      "axes": {
+        "transport": ["hid-v3"],
+        "report-shape": ["short", "long", "bad-version", "reserved-nonzero", "invalid-event", "invalid-button", "invalid-modifier", "zero-sequence"],
+        "transport-state": ["handshaking", "ready"]
+      },
+      "invariants": ["Malformed reports never create a valid semantic event.", "Parser never panics.", "Malformed input cannot silently transition connection to Ready."]
+    },
+    {
+      "id": "transport-routing",
+      "strength": 3,
+      "axes": {
+        "transport": ["cdc-v2", "hid-v3"],
+        "protocol-event": ["stroke", "tap", "language", "status", "error"],
+        "transport-state": ["ready", "degraded", "reconnecting"]
+      },
+      "invariants": ["Realtime user events have exactly one active data path.", "HID candidate does not duplicate strokes over CDC.", "Control/diagnostic events remain observable on CDC."]
+    },
+    {
+      "id": "identity-ambiguity",
+      "strength": 3,
+      "axes": {
+        "identity-state": ["exact-vid-pid-serial", "vid-pid-only", "stale-serial", "ambiguous", "missing-serial"],
+        "usb-topology": ["second-serial-device", "two-keyboardaz", "renumbered-com"],
+        "transport-state": ["opening", "handshaking", "reconnecting"]
+      },
+      "invariants": ["Unattended selection requires exact identity or successful protocol proof.", "Ambiguous candidates fail closed.", "COM name is never identity."]
+    },
+    {
+      "id": "reconnect-renumber",
+      "strength": 3,
+      "axes": {
+        "usb-topology": ["renumbered-com", "hot-unplug", "rapid-replug"],
+        "identity-state": ["exact-vid-pid-serial", "stale-serial"],
+        "transport-state": ["ready", "reconnecting", "degraded"]
+      },
+      "invariants": ["Recovery does not stop permanently after 30 failures.", "Stale COM does not block identity-based recovery.", "Old sessions cannot overwrite a newer live session."]
+    },
+    {
+      "id": "hot-unplug-races",
+      "strength": 4,
+      "axes": {
+        "transport": ["cdc-v2", "hid-v3"],
+        "usb-topology": ["hot-unplug", "rapid-replug"],
+        "concurrency": ["reconnect", "shutdown", "simultaneous-close-read"],
+        "queue-pressure": ["empty", "near-capacity"]
+      },
+      "invariants": ["Close is idempotent.", "No goroutine leak or deadlock.", "Pending validated events are replayed at most once.", "Race detector stays green."]
+    },
+    {
+      "id": "timing-boundaries",
+      "strength": 3,
+      "axes": {
+        "physical-input": ["main-only", "thumb-only", "bounce-main", "bounce-thumb"],
+        "debounce-time": ["press-minus-1us", "press-exact", "press-plus-1us", "release-minus-1us", "release-exact", "release-plus-1us", "micros-wrap"],
+        "load-profile": ["idle", "cpu-load"]
+      },
+      "invariants": ["Press/release boundary behavior is exact and documented.", "Bounce restarts the stability window without duplicate logical edges.", "micros wrap does not break elapsed-time arithmetic."]
+    },
+    {
+      "id": "thumb-main-interaction",
+      "strength": 4,
+      "axes": {
+        "physical-input": ["thumb-before-main", "same-scan-thumb-main", "multiple-thumbs", "repeat-backspace"],
+        "modifier-mask": ["shift", "number", "rare", "symbols", "shift-rare", "multi-mode-conflict"],
+        "language": ["en", "ru"],
+        "debounce-time": ["press-exact", "press-plus-1us"]
+      },
+      "invariants": ["Thumb state is resolved before the same-scan main press.", "Earliest mode wins conflicts deterministically.", "Late number after Backspace repeat is not consumed as a new mode.", "No false modifier activation."]
+    },
+    {
+      "id": "bounce-and-repeat",
+      "strength": 3,
+      "axes": {
+        "physical-input": ["bounce-main", "bounce-thumb", "repeat-backspace", "stuck-main", "stuck-thumb"],
+        "debounce-time": ["press-minus-1us", "press-exact", "release-exact", "micros-wrap"],
+        "load-profile": ["idle", "cdc-status-flood"]
+      },
+      "invariants": ["No duplicate stroke from bounce.", "Repeat cadence is independent of CDC command load.", "Stuck input cannot create unbounded event generation."]
+    },
+    {
+      "id": "timestamp-wrap",
+      "strength": 3,
+      "axes": {
+        "timestamp-state": ["near-wrap", "wrap", "host-before-device-uncomparable"],
+        "sequence-state": ["max-uint32", "wrap-to-one"],
+        "protocol-event": ["stroke", "tap", "language"]
+      },
+      "invariants": ["Raw firmware micros is preserved losslessly.", "Host never subtracts unsynchronized device and host clocks.", "Sequence wrap and timestamp wrap are independent phenomena."]
+    },
+    {
+      "id": "queue-pressure",
+      "strength": 3,
+      "axes": {
+        "queue-pressure": ["normal", "high-watermark", "near-capacity", "producer-blocked", "background-full"],
+        "concurrency": ["macro-delay", "command-exec", "ui-render"],
+        "protocol-event": ["stroke", "tap"]
+      },
+      "invariants": ["Physical realtime actions are not dropped.", "Background overload cannot starve realtime input.", "Queue age/high-watermark remains observable."]
+    },
+    {
+      "id": "concurrent-ui-runtime",
+      "strength": 3,
+      "axes": {
+        "concurrency": ["ui-render", "capture-mode", "reconnect"],
+        "protocol-event": ["stroke", "tap", "language", "status"],
+        "configuration-state": ["default", "custom-valid", "undo-redo-boundary"]
+      },
+      "invariants": ["UI history runs after realtime enqueue.", "Capture mode suppresses execution exactly once.", "appcore remains the sole semantic authority."]
+    },
+    {
+      "id": "shutdown-races",
+      "strength": 3,
+      "axes": {
+        "concurrency": ["shutdown", "simultaneous-close-read", "macro-delay"],
+        "transport-state": ["ready", "reconnecting", "degraded"],
+        "fault-injection": ["none", "unexpected-eof", "read-error"]
+      },
+      "invariants": ["Shutdown terminates all owned goroutines.", "Double Close is safe.", "No new recovery session starts after terminal shutdown."]
+    },
+    {
+      "id": "sendinput-failure",
+      "strength": 3,
+      "axes": {
+        "sendinput-result": ["full-success", "partial", "zero", "observer-failure"],
+        "protocol-event": ["stroke", "tap"],
+        "queue-pressure": ["empty", "near-capacity"]
+      },
+      "invariants": ["Partial insertion is counted as failure.", "HIL T3 is recorded at the first actual SendInput call.", "No failure cause such as UIPI is invented without evidence."]
+    },
+    {
+      "id": "host-action-correlation",
+      "strength": 3,
+      "axes": {
+        "protocol-event": ["stroke", "tap", "language"],
+        "sendinput-result": ["full-success", "partial", "not-actionable"],
+        "sequence-state": ["contiguous", "duplicate", "gap"]
+      },
+      "invariants": ["Trace contains transport+sequence only, never typed content.", "Stroke/tap require one T3; language requires none.", "Duplicate or unmatched T3 makes capture fail closed."]
+    },
+    {
+      "id": "configuration-transactions",
+      "strength": 3,
+      "axes": {
+        "configuration-state": ["custom-valid", "missing-binding", "invalid-json", "dangerous-command", "macro-nested", "import-conflict", "undo-redo-boundary"],
+        "concurrency": ["idle", "capture-mode", "ui-render"],
+        "workspace-state": ["fresh", "both-exist", "target-readonly"]
+      },
+      "invariants": ["Editor mutations are atomic and validated.", "Import is previewed before replacement.", "Undo/redo restores a valid configuration.", "Dangerous command/macro execution remains explicitly confirmed."]
+    },
+    {
+      "id": "workspace-faults",
+      "strength": 3,
+      "axes": {
+        "workspace-state": ["fresh", "legacy-only", "both-exist", "target-readonly", "legacy-corrupt", "partial-migration", "disk-full"],
+        "configuration-state": ["default", "custom-valid", "invalid-json"],
+        "process-state": ["cold-start", "crash-recovery"]
+      },
+      "invariants": ["Migration never overwrites an existing canonical target.", "Legacy source is retained for rollback.", "One corrupt artifact does not prevent migration of independent valid artifacts."]
+    },
+    {
+      "id": "single-instance-races",
+      "strength": 3,
+      "axes": {
+        "process-state": ["first-instance", "second-instance", "cold-start", "crash-recovery"],
+        "concurrency": ["idle", "shutdown"],
+        "workspace-state": ["fresh", "both-exist"]
+      },
+      "invariants": ["A second process never owns device input concurrently.", "Activation of the existing UI is separate from ownership acquisition.", "Crash recovery does not leave a permanent stale ownership marker."]
+    },
+    {
+      "id": "explorer-restart",
+      "strength": 3,
+      "axes": {
+        "process-state": ["explorer-restart", "system-suspend-resume"],
+        "transport-state": ["ready", "reconnecting"],
+        "concurrency": ["ui-render", "reconnect"]
+      },
+      "invariants": ["Tray recovery never restarts the input pipeline.", "Device session remains owned by connection.Runtime.", "UI recreation cannot duplicate workers."]
+    },
+    {
+      "id": "load-and-jitter",
+      "strength": 3,
+      "axes": {
+        "load-profile": ["idle", "cpu-load", "macro-load", "command-flood", "cdc-status-flood", "ui-heavy"],
+        "transport": ["cdc-v2", "hid-v3"],
+        "queue-pressure": ["empty", "normal", "high-watermark"]
+      },
+      "invariants": ["Correctness is invariant under load.", "Latency distributions are reported separately from correctness.", "Transport promotion is based on controlled A/B, not averages from unlike loads."]
+    },
+    {
+      "id": "hid-send-failure",
+      "strength": 3,
+      "axes": {
+        "transport": ["hid-v3"],
+        "fault-injection": ["send-failure", "observer-error"],
+        "protocol-event": ["stroke", "tap", "language"]
+      },
+      "invariants": ["HID failure never silently mirrors the event over CDC.", "Failed sequence remains observable in diagnostics.", "Instrumentation failure cannot be reported as a complete successful HIL dataset."]
+    },
+    {
+      "id": "clean-checkout",
+      "strength": 2,
+      "axes": {
+        "process-state": ["cold-start", "first-instance"],
+        "workspace-state": ["fresh", "legacy-only"]
+      },
+      "invariants": ["Build and tests require no uncommitted generated files.", "Release inputs are reconstructible from the exact commit and pinned toolchains."]
+    },
+    {
+      "id": "dependency-drift",
+      "strength": 2,
+      "axes": {
+        "fault-injection": ["none"],
+        "process-state": ["cold-start"]
+      },
+      "invariants": ["Go and PlatformIO toolchains are pinned or explicitly compatibility-tested.", "Security scan failure blocks release hardening."]
+    },
+    {
+      "id": "artifact-integrity",
+      "strength": 2,
+      "axes": {
+        "transport": ["cdc-v2", "hid-v3"],
+        "process-state": ["cold-start"]
+      },
+      "invariants": ["Both firmware artifacts meet size budgets and have SHA256.", "Release artifacts map to one exact commit."]
+    }
+  ]
+}
