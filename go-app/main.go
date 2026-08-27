@@ -22,10 +22,12 @@ import (
 	"sync"
 	"time"
 
+	"hapticpad-go-app/appcore"
 	"hapticpad-go-app/config"
 	"hapticpad-go-app/connection"
 	"hapticpad-go-app/device"
 	"hapticpad-go-app/handler"
+	"hapticpad-go-app/layoutedit"
 	"hapticpad-go-app/serial"
 	"hapticpad-go-app/textinput"
 	"hapticpad-go-app/workspace"
@@ -68,6 +70,8 @@ type App struct {
 	theme             *material.Theme
 	serialPort        string
 	connectionRuntime *connection.Runtime
+	coreState         *appcore.State
+	layoutEditor      *layoutedit.Session
 	workspace         workspace.Paths
 	portCandidates    []device.Candidate
 	keymap            *config.KeymapConfig
@@ -113,6 +117,7 @@ type App struct {
 	// Горутины
 	messageProcessorStop chan bool // Сигнал для остановки обработки сообщений
 	messageProcessorDone chan bool // Подтверждение завершения обработки
+	captureSelections    chan appcore.CaptureSelection
 }
 
 // AppSnapshot представляет копию состояния приложения для безопасного чтения в UI
@@ -250,6 +255,11 @@ func run(w *app.Window) error {
 	controller := connection.NewController(identity, baudRate)
 	connectionRuntime := connection.NewRuntime(controller)
 	connectionRuntime.Start()
+	coreState := appcore.NewState()
+	layoutEditor, editorErr := layoutedit.New(layoutConfig)
+	if editorErr != nil {
+		return fmt.Errorf("initialize layout editor: %w", editorErr)
+	}
 
 	th := createDarkTheme()
 	th.Shaper = text.NewShaper(text.NoSystemFonts(), text.WithCollection(gofont.Collection()))
@@ -257,6 +267,8 @@ func run(w *app.Window) error {
 	appState := &App{
 		theme:                th,
 		connectionRuntime:    connectionRuntime,
+		coreState:            coreState,
+		layoutEditor:         layoutEditor,
 		workspace:            paths,
 		keymap:               keymap,
 		actionHandler:        handler.NewHandler(keymap),
@@ -271,6 +283,7 @@ func run(w *app.Window) error {
 		currentMode:          "letters",
 		messageProcessorStop: make(chan bool),
 		messageProcessorDone: make(chan bool, 1), // Буферизованный канал для подтверждения
+		captureSelections:    make(chan appcore.CaptureSelection, 8),
 		errorMsg:             startupError,
 	}
 
@@ -377,10 +390,36 @@ func (a *App) syncConnectionState() {
 		a.errorMsg = snapshot.Connection.LastError
 	}
 	a.mu.Unlock()
+
+	if a.coreState != nil {
+		state := appcore.Disconnected
+		switch snapshot.Connection.State {
+		case connection.Ready:
+			state = appcore.Connected
+		case connection.Degraded:
+			state = appcore.Degraded
+		case connection.Reconnecting:
+			state = appcore.Recovering
+		case connection.Discovering, connection.Opening, connection.Handshaking:
+			state = appcore.Connecting
+		}
+		var stateErr error
+		if snapshot.Connection.LastError != "" {
+			stateErr = fmt.Errorf("%s", snapshot.Connection.LastError)
+		}
+		a.coreState.SetConnection(state, stateErr)
+	}
 }
 
 func (a *App) processMessages() {
-	// NOP: State transitions are handled thread-safely in background goroutines
+	for a.captureSelections != nil {
+		select {
+		case selection := <-a.captureSelections:
+			a.applyCapturedSelection(selection)
+		default:
+			return
+		}
+	}
 }
 
 func (a *App) updatePortList() {
@@ -497,6 +536,9 @@ func (a *App) disconnect() {
 	a.activeThumbMask = 0
 	a.errorMsg = ""
 	a.mu.Unlock()
+	if a.coreState != nil {
+		a.coreState.SetConnection(appcore.Disconnected, nil)
+	}
 	log.Println("Disconnected")
 }
 
@@ -530,6 +572,19 @@ func (a *App) resolveStroke(language string, modifiers uint8, button int) (*conf
 }
 
 func (a *App) handleMessage(msg serial.ButtonMessage) {
+	if a.coreState != nil {
+		decision := a.coreState.ApplyEvent(msg.Event())
+		if decision.Captured != nil && a.captureSelections != nil {
+			select {
+			case a.captureSelections <- *decision.Captured:
+			case <-a.messageProcessorStop:
+				return
+			}
+		}
+		if decision.SuppressExecution {
+			return
+		}
+	}
 	if msg.Type == "ready" {
 		log.Printf("Device ready signal received (protocol=%d firmware=%s)", msg.Protocol, msg.Firmware)
 		a.mu.Lock()

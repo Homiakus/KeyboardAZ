@@ -9,17 +9,17 @@ import (
 )
 
 type ImportPreview struct {
-	ProfilesAdded    []string
-	ProfilesRemoved  []string
+	ProfilesAdded   []string
+	ProfilesRemoved []string
 	ProfilesChanged []string
-	BindingsAdded    int
-	BindingsRemoved  int
-	BindingsChanged  int
-	ThumbsAdded      int
-	ThumbsRemoved    int
-	ThumbsChanged    int
-	Commands         int
-	Macros           int
+	BindingsAdded   int
+	BindingsRemoved int
+	BindingsChanged int
+	ThumbsAdded     int
+	ThumbsRemoved   int
+	ThumbsChanged   int
+	Commands        int
+	Macros          int
 }
 
 func PreviewImport(current, incoming *textinput.LayoutConfig) (ImportPreview, error) {

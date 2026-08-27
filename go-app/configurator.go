@@ -6,9 +6,9 @@ import (
 	"image/color"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"hapticpad-go-app/config"
+	"hapticpad-go-app/layoutedit"
 	"hapticpad-go-app/textinput"
 
 	"gioui.org/layout"
@@ -45,6 +45,14 @@ type ConfiguratorState struct {
 	clearBtn         widget.Clickable
 	testBtn          widget.Clickable
 	resetBindingBtn  widget.Clickable
+	undoBtn          widget.Clickable
+	redoBtn          widget.Clickable
+	copyBindingBtn   widget.Clickable
+	pasteBindingBtn  widget.Clickable
+	captureBtn       widget.Clickable
+	confirmImportBtn widget.Clickable
+	cancelImportBtn  widget.Clickable
+	presetBtns       [6]widget.Clickable
 	saveApplyBtn     widget.Clickable
 	revertBtn        widget.Clickable
 	backupBtn        widget.Clickable
@@ -56,13 +64,18 @@ type ConfiguratorState struct {
 	deleteProfileBtn widget.Clickable
 
 	actionEditor      widget.Editor
+	presetSearch      widget.Editor
 	profileNameEditor widget.Editor
 	newProfileEditor  widget.Editor
 
-	message      string
-	editorError  string
-	dirty        bool
-	selectionKey string
+	message              string
+	editorError          string
+	dirty                bool
+	selectionKey         string
+	dangerousTestArmed   bool
+	pendingImport        *textinput.LayoutConfig
+	pendingImportSource  string
+	pendingImportSummary string
 }
 
 func NewConfiguratorState(layoutConfig *textinput.LayoutConfig) *ConfiguratorState {
@@ -76,6 +89,7 @@ func NewConfiguratorState(layoutConfig *textinput.LayoutConfig) *ConfiguratorSta
 	}
 	state.profileList.List.Axis = layout.Horizontal
 	state.actionEditor.SingleLine = false
+	state.presetSearch.SingleLine = true
 	state.profileNameEditor.SingleLine = true
 	state.newProfileEditor.SingleLine = true
 	state.loadSelection(layoutConfig)
@@ -135,6 +149,7 @@ func (s *ConfiguratorState) loadSelection(layoutConfig *textinput.LayoutConfig) 
 	_, value := actionToEditor(action, ok)
 	s.actionEditor.SetText(value)
 	s.editorError = ""
+	s.dangerousTestArmed = false
 	s.selectionKey = s.selectionID()
 }
 
@@ -153,30 +168,21 @@ func (s *ConfiguratorState) setSelection(layoutConfig *textinput.LayoutConfig, l
 }
 
 func (a *App) applyConfiguratorDraft(save bool) error {
-	if err := textinput.ValidateLayout(a.layoutDraft); err != nil {
-		return err
-	}
-	if err := a.resolver.Replace(a.layoutDraft); err != nil {
-		return err
-	}
 	if save {
-		if err := textinput.SaveLayout(a.layoutDraft, a.layoutPath); err != nil {
-			return err
-		}
-		a.layoutConfig = textinput.CloneLayout(a.layoutDraft)
+		return a.saveEditorLayout()
 	}
-	a.configurator.dirty = !save
-	return nil
+	draft := a.syncDraftFromEditor()
+	if draft == nil {
+		return fmt.Errorf("layout draft is unavailable")
+	}
+	if err := textinput.ValidateLayout(draft); err != nil {
+		return err
+	}
+	return a.resolver.Replace(draft)
 }
 
 func (a *App) saveBackup() (string, error) {
-	stamp := time.Now().Format("20060102-150405")
-	exportDir := filepath.Join(filepath.Dir(a.layoutPath), "exports")
-	path := filepath.Join(exportDir, "hapticpad-layout-"+stamp+".json")
-	if err := textinput.SaveLayout(a.layoutDraft, path); err != nil {
-		return "", err
-	}
-	return path, nil
+	return a.saveEditorBackup()
 }
 
 func (a *App) applyDraftLive(message string) {
@@ -185,24 +191,14 @@ func (a *App) applyDraftLive(message string) {
 		a.configurator.message = "Не удалось применить: " + err.Error()
 		return
 	}
-	a.configurator.dirty = true
+	if a.layoutEditor != nil {
+		a.configurator.dirty = a.layoutEditor.Dirty()
+	}
 	a.configurator.message = message
 }
 
 func (a *App) importLayoutFromFile(path string) error {
-	imported, err := textinput.LoadLayout(path)
-	if err != nil {
-		return err
-	}
-	a.layoutDraft = textinput.CloneLayout(imported)
-	a.configurator.selectedProfile = a.layoutDraft.ActiveProfile
-	a.configurator.selectedLanguage = textinput.LanguageEnglish
-	a.configurator.selectedMode = "letters"
-	a.configurator.selectedButton = 0
-	a.configurator.selectedThumb = ""
-	a.configurator.loadSelection(a.layoutDraft)
-	a.applyDraftLive("Раскладка импортирована и уже работает; сохраните её как основную")
-	return nil
+	return a.prepareLayoutImport(path)
 }
 
 func (a *App) layoutAppBar(gtx layout.Context, snap AppSnapshot) layout.Dimensions {
@@ -269,15 +265,21 @@ func (a *App) layoutConfigurator(gtx layout.Context) layout.Dimensions {
 	if s.selectionKey != s.selectionID() {
 		s.loadSelection(a.layoutDraft)
 	}
+	compact := gtx.Constraints.Max.X < gtx.Dp(unit.Dp(900))
 	return layout.Inset{Top: 4, Bottom: 12, Left: 14, Right: 14}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions { return a.layoutConfiguratorToolbar(gtx) }),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+				if compact {
+					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+						layout.Flexed(0.58, func(gtx layout.Context) layout.Dimensions { return a.layoutConfiguratorKeyboard(gtx) }),
+						layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+						layout.Flexed(0.42, func(gtx layout.Context) layout.Dimensions { return a.layoutActionEditor(gtx) }),
+					)
+				}
 				return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-						return a.layoutConfiguratorKeyboard(gtx)
-					}),
+					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions { return a.layoutConfiguratorKeyboard(gtx) }),
 					layout.Rigid(layout.Spacer{Width: unit.Dp(12)}.Layout),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						width := gtx.Dp(unit.Dp(370))
@@ -301,15 +303,27 @@ func (a *App) layoutConfiguratorToolbar(gtx layout.Context) layout.Dimensions {
 		}
 	}
 	if _, clicked := s.revertBtn.Update(gtx); clicked {
-		a.layoutDraft = textinput.CloneLayout(a.layoutConfig)
-		s.selectedProfile = a.layoutDraft.ActiveProfile
-		s.dirty = false
-		s.loadSelection(a.layoutDraft)
-		if err := a.resolver.Replace(a.layoutDraft); err != nil {
+		if err := a.revertEditorLayout(); err != nil {
 			s.message = "Ошибка отката: " + err.Error()
-		} else {
-			s.message = "Несохранённые изменения отменены и сняты с активной раскладки"
 		}
+	}
+	if _, clicked := s.undoBtn.Update(gtx); clicked {
+		if !a.undoEditorLayout() {
+			s.message = "Нет изменений для Undo"
+		}
+	}
+	if _, clicked := s.redoBtn.Update(gtx); clicked {
+		if !a.redoEditorLayout() {
+			s.message = "Нет изменений для Redo"
+		}
+	}
+	if _, clicked := s.confirmImportBtn.Update(gtx); clicked && s.pendingImport != nil {
+		if err := a.confirmLayoutImport(); err != nil {
+			s.message = "Ошибка импорта: " + err.Error()
+		}
+	}
+	if _, clicked := s.cancelImportBtn.Update(gtx); clicked && s.pendingImport != nil {
+		a.cancelLayoutImport()
 	}
 	if _, clicked := s.backupBtn.Update(gtx); clicked {
 		path, err := a.saveBackup()
@@ -351,12 +365,8 @@ func (a *App) layoutConfiguratorToolbar(gtx layout.Context) layout.Dimensions {
 						layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							if _, clicked := s.renameBtn.Update(gtx); clicked {
-								profile := a.layoutDraft.Profiles[s.selectedProfile]
-								name := strings.TrimSpace(s.profileNameEditor.Text())
-								if profile != nil && name != "" {
-									profile.Name = name
-									s.dirty = true
-									s.message = "Профиль переименован"
+								if err := a.renameEditorProfile(s.selectedProfile, s.profileNameEditor.Text()); err != nil {
+									s.message = err.Error()
 								}
 							}
 							return compactButton(a.theme, &s.renameBtn, "Переименовать").Layout(gtx)
@@ -372,13 +382,10 @@ func (a *App) layoutConfiguratorToolbar(gtx layout.Context) layout.Dimensions {
 								name := strings.TrimSpace(s.newProfileEditor.Text())
 								if name == "" {
 									s.message = "Введите название нового профиля"
-								} else if err := textinput.DuplicateProfile(a.layoutDraft, s.selectedProfile, name, name); err != nil {
+								} else if err := a.duplicateEditorProfile(s.selectedProfile, name); err != nil {
 									s.message = err.Error()
 								} else {
-									s.selectedProfile = a.layoutDraft.ActiveProfile
 									s.newProfileEditor.SetText("")
-									s.loadSelection(a.layoutDraft)
-									a.applyDraftLive("Создана и активирована копия профиля; сохраните её")
 								}
 							}
 							return compactButton(a.theme, &s.duplicateBtn, "Дублировать").Layout(gtx)
@@ -387,23 +394,42 @@ func (a *App) layoutConfiguratorToolbar(gtx layout.Context) layout.Dimensions {
 				}),
 				layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if s.pendingImport == nil {
+						return layout.Dimensions{}
+					}
+					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+							return material.Caption(a.theme, s.pendingImportSummary).Layout(gtx)
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							b := compactButton(a.theme, &s.confirmImportBtn, "Применить импорт")
+							if importSummaryRisky(s.pendingImportSummary) {
+								b.Background = color.NRGBA{R: 124, G: 82, B: 32, A: 255}
+							}
+							return b.Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return compactButton(a.theme, &s.cancelImportBtn, "Отмена").Layout(gtx)
+						}),
+					)
+				}),
+				layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							if _, clicked := s.activateBtn.Update(gtx); clicked {
-								a.layoutDraft.ActiveProfile = s.selectedProfile
-								a.applyDraftLive("Профиль активирован; сохраните, чтобы закрепить выбор")
+								if err := a.activateEditorProfile(s.selectedProfile); err != nil {
+									s.message = err.Error()
+								}
 							}
 							return compactButton(a.theme, &s.activateBtn, "Сделать активным").Layout(gtx)
 						}),
 						layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							if _, clicked := s.deleteProfileBtn.Update(gtx); clicked {
-								if err := textinput.DeleteProfile(a.layoutDraft, s.selectedProfile); err != nil {
+								if err := a.deleteEditorProfile(s.selectedProfile); err != nil {
 									s.message = err.Error()
-								} else {
-									s.selectedProfile = a.layoutDraft.ActiveProfile
-									s.loadSelection(a.layoutDraft)
-									a.applyDraftLive("Профиль удалён из рабочей копии; сохраните изменения")
 								}
 							}
 							button := compactButton(a.theme, &s.deleteProfileBtn, "Удалить")
@@ -416,6 +442,19 @@ func (a *App) layoutConfiguratorToolbar(gtx layout.Context) layout.Dimensions {
 							return label.Layout(gtx)
 						}),
 						layout.Rigid(layout.Spacer{Width: unit.Dp(10)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							d := layoutedit.Analyze(a.layoutDraft)
+							return material.Caption(a.theme, fmt.Sprintf("Missing %d · Duplicates %d · Exec %d", d.Missing, d.Duplicates, d.Background)).Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return compactButton(a.theme, &s.undoBtn, "Undo").Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(4)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return compactButton(a.theme, &s.redoBtn, "Redo").Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							return compactButton(a.theme, &s.openFolderBtn, "Папка").Layout(gtx)
 						}),
@@ -683,34 +722,45 @@ func (a *App) layoutThumbRow(gtx layout.Context) layout.Dimensions {
 func (a *App) layoutActionEditor(gtx layout.Context) layout.Dimensions {
 	s := a.configurator
 	fixedLanguageThumb := s.selectedThumb == "language"
+	if _, clicked := s.copyBindingBtn.Update(gtx); clicked && !fixedLanguageThumb {
+		a.copyEditorBinding()
+	}
+	if _, clicked := s.pasteBindingBtn.Update(gtx); clicked && !fixedLanguageThumb {
+		if err := a.pasteEditorBinding(); err != nil {
+			s.editorError = err.Error()
+		}
+	}
+	if _, clicked := s.captureBtn.Update(gtx); clicked && !fixedLanguageThumb {
+		a.beginConfiguratorCapture()
+	}
+	presets := layoutedit.SearchActionPresets(s.presetSearch.Text(), len(s.presetBtns))
+	for i := range presets {
+		if _, clicked := s.presetBtns[i].Update(gtx); clicked {
+			s.actionType, _ = actionToEditor(presets[i].Action, true)
+			_, value := actionToEditor(presets[i].Action, true)
+			s.actionEditor.SetText(value)
+			s.editorError = "Готовое действие выбрано; нажмите Присвоить"
+			s.dangerousTestArmed = false
+		}
+	}
 	if _, clicked := s.assignBtn.Update(gtx); clicked && !fixedLanguageThumb {
 		action, err := actionFromEditor(s.actionType, s.actionEditor.Text())
 		if err != nil {
 			s.editorError = err.Error()
+		} else if err := a.assignEditorAction(action); err != nil {
+			s.editorError = err.Error()
 		} else {
-			if s.selectedThumb != "" {
-				err = textinput.SetThumbTap(a.layoutDraft, s.selectedProfile, s.selectedThumb, action)
-			} else {
-				err = textinput.SetBinding(a.layoutDraft, s.selectedProfile, s.selectedLanguage, s.selectedMode, s.selectedButton, action)
-			}
-			if err != nil {
-				s.editorError = err.Error()
-			} else {
-				s.editorError = ""
-				a.applyDraftLive("Назначение применено сразу; сохраните раскладку")
-			}
+			s.editorError = ""
 		}
 	}
 	if _, clicked := s.clearBtn.Update(gtx); clicked && !fixedLanguageThumb {
 		s.actionType = actionTypeNone
 		s.actionEditor.SetText("")
-		if s.selectedThumb != "" {
-			_ = textinput.SetThumbTap(a.layoutDraft, s.selectedProfile, s.selectedThumb, nil)
+		if err := a.clearEditorAction(); err != nil {
+			s.editorError = err.Error()
 		} else {
-			_ = textinput.SetBinding(a.layoutDraft, s.selectedProfile, s.selectedLanguage, s.selectedMode, s.selectedButton, nil)
+			s.editorError = ""
 		}
-		s.editorError = ""
-		a.applyDraftLive("Назначение очищено и уже применено; сохраните раскладку")
 	}
 	if _, clicked := s.testBtn.Update(gtx); clicked && !fixedLanguageThumb {
 		action, err := actionFromEditor(s.actionType, s.actionEditor.Text())
@@ -718,32 +768,19 @@ func (a *App) layoutActionEditor(gtx layout.Context) layout.Dimensions {
 			s.editorError = err.Error()
 		} else if action == nil {
 			s.editorError = "Нет действия для проверки"
+		} else if (action.Type == config.ActionCommand || action.Type == config.ActionMacro) && !s.dangerousTestArmed {
+			s.dangerousTestArmed = true
+			s.editorError = "Exec-действие может запустить внешнюю команду. Нажмите Проверить ещё раз для подтверждения."
 		} else {
+			s.dangerousTestArmed = false
 			a.actionHandler.HandleAction(action)
 			s.editorError = "Проверочное действие отправлено"
 		}
 	}
 	if _, clicked := s.resetBindingBtn.Update(gtx); clicked && !fixedLanguageThumb {
-		defaults := textinput.DefaultLayoutConfig()
-		var action config.Action
-		var ok bool
-		if s.selectedThumb != "" {
-			action, ok = textinput.GetThumbTap(defaults, textinput.DefaultProfileID, s.selectedThumb)
-			if ok {
-				_ = textinput.SetThumbTap(a.layoutDraft, s.selectedProfile, s.selectedThumb, &action)
-			} else {
-				_ = textinput.SetThumbTap(a.layoutDraft, s.selectedProfile, s.selectedThumb, nil)
-			}
-		} else {
-			action, ok = textinput.GetBinding(defaults, textinput.DefaultProfileID, s.selectedLanguage, s.selectedMode, s.selectedButton)
-			if ok {
-				_ = textinput.SetBinding(a.layoutDraft, s.selectedProfile, s.selectedLanguage, s.selectedMode, s.selectedButton, &action)
-			} else {
-				_ = textinput.SetBinding(a.layoutDraft, s.selectedProfile, s.selectedLanguage, s.selectedMode, s.selectedButton, nil)
-			}
+		if err := a.resetEditorAction(); err != nil {
+			s.editorError = err.Error()
 		}
-		s.loadSelection(a.layoutDraft)
-		a.applyDraftLive("Стандартное назначение восстановлено и применено")
 	}
 
 	return panel(gtx, color.NRGBA{R: 35, G: 38, B: 45, A: 255}, func(gtx layout.Context) layout.Dimensions {
@@ -793,6 +830,27 @@ func (a *App) layoutActionEditor(gtx layout.Context) layout.Dimensions {
 					if fixedLanguageThumb {
 						return layout.Dimensions{}
 					}
+					return material.Editor(a.theme, &s.presetSearch, "Поиск готового действия: копировать, Enter, ctrl c...").Layout(gtx)
+				}),
+				layout.Rigid(layout.Spacer{Height: unit.Dp(6)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if fixedLanguageThumb || len(presets) == 0 {
+						return layout.Dimensions{}
+					}
+					children := make([]layout.FlexChild, 0, len(presets)*2)
+					for i, preset := range presets {
+						i, preset := i, preset
+						children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return compactButton(a.theme, &s.presetBtns[i], preset.Name).Layout(gtx)
+						}), layout.Rigid(layout.Spacer{Width: unit.Dp(4)}.Layout))
+					}
+					return layout.Flex{Axis: layout.Horizontal}.Layout(gtx, children...)
+				}),
+				layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if fixedLanguageThumb {
+						return layout.Dimensions{}
+					}
 					hint := "Значение"
 					for _, item := range configurableActionTypes {
 						if item.Type == s.actionType {
@@ -820,6 +878,18 @@ func (a *App) layoutActionEditor(gtx layout.Context) layout.Dimensions {
 						return layout.Dimensions{}
 					}
 					return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return compactButton(a.theme, &s.captureBtn, "Нажать физически").Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return compactButton(a.theme, &s.copyBindingBtn, "Копировать").Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(4)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return compactButton(a.theme, &s.pasteBindingBtn, "Вставить").Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							return compactButton(a.theme, &s.resetBindingBtn, "По умолчанию").Layout(gtx)
 						}),
