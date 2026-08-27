@@ -14,7 +14,6 @@ import (
 	"time"
 
 	domainaction "hapticpad-go-app/action"
-	"hapticpad-go-app/config"
 	"hapticpad-go-app/telemetry"
 )
 
@@ -34,10 +33,16 @@ type ActionRequest struct {
 	EnqueuedAt time.Time
 }
 
+// ActionLookup is the minimal port required by the execution layer. Concrete
+// keymap/layout repositories satisfy it without becoming handler dependencies.
+type ActionLookup interface {
+	GetActionByMask(layer int, mask uint32) *domainaction.Action
+}
+
 // Handler separates latency-sensitive keyboard input from commands and macro
 // scheduling. A sleeping macro can no longer delay or drop a typed character.
 type Handler struct {
-	keymap *config.KeymapConfig
+	keymap ActionLookup
 
 	realtimeQueue   chan ActionRequest
 	macroStepQueue  chan ActionRequest
@@ -53,12 +58,12 @@ type Handler struct {
 }
 
 // NewHandler creates a low-latency action handler.
-func NewHandler(keymap *config.KeymapConfig) *Handler {
+func NewHandler(keymap ActionLookup) *Handler {
 	return newHandlerWithDeps(keymap, newKeyboard(), defaultCommandRunner, time.Sleep)
 }
 
 func newHandlerWithDeps(
-	keymap *config.KeymapConfig,
+	keymap ActionLookup,
 	keyboard Keyboard,
 	runCommand func(string) error,
 	sleep func(time.Duration),
