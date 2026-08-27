@@ -25,6 +25,13 @@ jobs:
           cache-dependency-path: go-app/go.sum
       - name: Apply transactional configurator migration
         run: python tools/migrate_configurator_editor.py
+      - name: Remove migrated legacy imports
+        shell: pwsh
+        run: |
+          $path = 'go-app/configurator.go'
+          $lines = Get-Content $path
+          $lines = $lines | Where-Object { $_ -notmatch '^\s*"time"\s*$' }
+          Set-Content -Path $path -Value $lines -Encoding utf8
       - name: Format migrated sources
         shell: pwsh
         run: |
