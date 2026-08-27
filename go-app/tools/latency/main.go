@@ -21,6 +21,7 @@ type distributionJSON struct {
 type outputJSON struct {
 	Transport            string           `json:"transport"`
 	Samples              int              `json:"samples"`
+	HostTimingExpected   int              `json:"host_timing_expected"`
 	SequenceGaps         uint64           `json:"sequence_gaps"`
 	SequenceDuplicates   uint64           `json:"sequence_duplicates"`
 	SequenceOutOfOrder   uint64           `json:"sequence_out_of_order"`
@@ -35,7 +36,7 @@ type outputJSON struct {
 func main() {
 	inputPath := flag.String("input", "", "HIL CSV produced according to tests/hil/latency_protocol.md")
 	minSamples := flag.Int("min-samples", 10000, "minimum samples required for correctness gate")
-	requireHost := flag.Bool("require-host-timing", true, "require host RX -> SendInput timing for every sample")
+	requireHost := flag.Bool("require-host-timing", true, "require host RX -> SendInput timing for every actionable event")
 	requireE2E := flag.Bool("require-fixture-e2e", false, "require fixture T0 -> T4 timing for every sample")
 	maxHostP95US := flag.Float64("max-host-p95-us", 1000, "maximum host RX -> SendInput p95 in microseconds; 0 disables")
 	maxHostP99US := flag.Float64("max-host-p99-us", 0, "maximum host RX -> SendInput p99 in microseconds; 0 disables")
@@ -85,6 +86,7 @@ func main() {
 	output := outputJSON{
 		Transport:            dataset.Transport,
 		Samples:              summary.Samples,
+		HostTimingExpected:   summary.HostTimingExpected,
 		SequenceGaps:         summary.SequenceGaps,
 		SequenceDuplicates:   summary.SequenceDuplicates,
 		SequenceOutOfOrder:   summary.SequenceOutOfOrder,
