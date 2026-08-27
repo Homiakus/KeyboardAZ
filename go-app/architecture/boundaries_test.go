@@ -17,6 +17,7 @@ type boundaryRule struct {
 
 func TestCorePackagesDoNotDependOnUIOrHigherLayers(t *testing.T) {
 	rules := []boundaryRule{
+		{dir: "action", forbidden: []string{"gioui.org/", "hapticpad-go-app/config", "hapticpad-go-app/textinput", "hapticpad-go-app/layoutedit", "hapticpad-go-app/handler", "hapticpad-go-app/connection", "hapticpad-go-app/serial", "hapticpad-go-app/device"}},
 		{dir: "protocol", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/textinput", "hapticpad-go-app/config", "hapticpad-go-app/serial", "hapticpad-go-app/device"}},
 		{dir: "workspace", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/textinput", "hapticpad-go-app/config"}},
 		{dir: "transport", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/textinput", "hapticpad-go-app/config", "hapticpad-go-app/serial"}},
