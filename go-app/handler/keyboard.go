@@ -9,7 +9,13 @@
 
 package handler
 
-// newKeyboard создает реализацию клавиатуры для Windows
+import "hapticpad-go-app/telemetry"
+
+// newKeyboard preserves the legacy process-level telemetry behavior.
 func newKeyboard() Keyboard {
-	return &WindowsKeyboard{}
+	return newKeyboardWithRecorder(telemetry.Process())
+}
+
+func newKeyboardWithRecorder(recorder telemetry.Recorder) Keyboard {
+	return &WindowsKeyboard{health: telemetry.RecorderOrProcess(recorder)}
 }
