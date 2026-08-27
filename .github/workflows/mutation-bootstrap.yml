@@ -12,7 +12,7 @@ permissions:
 jobs:
   mutation:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: go-app
@@ -24,6 +24,17 @@ jobs:
         with:
           go-version-file: go-app/go.mod
           cache-dependency-path: go-app/go.sum
+      - name: Install Linux desktop build dependencies required by module-wide coverage
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc libc6-dev \
+            libx11-dev xorg-dev libxtst-dev \
+            xsel xclip libpng++-dev \
+            xcb libxcb-xkb-dev x11-xkb-utils libx11-xcb-dev \
+            libxkbcommon-x11-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols
       - name: Green baseline before test-of-tests
         run: go test -race ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./inputtrace ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/devloop
       - name: Install pinned Gremlins
