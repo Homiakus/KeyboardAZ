@@ -153,13 +153,17 @@ func (a *App) SnapshotState() AppSnapshot {
 		runtimeConnected = runtimeSnapshot.HasSession && state == connection.Ready
 	}
 
+	var semantic appcore.Snapshot
+	hasSemantic := a.coreState != nil
+	if hasSemantic {
+		semantic = a.coreState.Snapshot()
+	}
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	historyCopy := make([]HistoryEntry, len(a.history))
 	copy(historyCopy, a.history)
-	activeBtnsCopy := make([]int, len(a.activeButtons))
-	copy(activeBtnsCopy, a.activeButtons)
 	portItemsCopy := make([]string, len(a.portItems))
 	copy(portItemsCopy, a.portItems)
 
@@ -167,12 +171,38 @@ func (a *App) SnapshotState() AppSnapshot {
 	if a.connectionRuntime != nil {
 		connected = runtimeConnected
 	}
+
+	protocolVersion := a.protocolVersion
+	firmwareVersion := a.firmwareVersion
+	currentLanguage := a.currentLanguage
+	currentModifiers := a.currentModifiers
+	activeThumbMask := a.activeThumbMask
+	activeButtonsMask := a.activeButtonsMask
+	activeButtons := append([]int(nil), a.activeButtons...)
+	currentMode := a.currentMode
+
+	// appcore.State is the canonical semantic read model. The legacy
+	// App fields remain temporarily as a protocol-v1 compatibility
+	// fallback and can now be deleted independently.
+	if hasSemantic {
+		protocolVersion = semantic.ProtocolVersion
+		firmwareVersion = semantic.FirmwareVersion
+		currentLanguage = semantic.Language
+		currentModifiers = semantic.Modifiers
+		activeThumbMask = semantic.ActiveThumbMask
+		activeButtonsMask = semantic.ActiveButtonsMask
+		activeButtons = append(activeButtons[:0], semantic.ActiveButtons...)
+		if semantic.ProtocolVersion >= 2 {
+			currentMode = textinput.ModeName(semantic.Modifiers)
+		}
+	}
+
 	return AppSnapshot{
 		Connected: connected, Reconnecting: reconnecting, ReconnectAttempts: reconnectAttempts,
-		CurrentLayer: a.currentLayer, CurrentLanguage: a.currentLanguage, CurrentMode: a.currentMode,
-		CurrentModifiers: a.currentModifiers, ActiveThumbMask: a.activeThumbMask,
-		ProtocolVersion: a.protocolVersion, FirmwareVersion: a.firmwareVersion,
-		ActiveButtons: activeBtnsCopy, ActiveButtonsMask: a.activeButtonsMask,
+		CurrentLayer: a.currentLayer, CurrentLanguage: currentLanguage, CurrentMode: currentMode,
+		CurrentModifiers: currentModifiers, ActiveThumbMask: activeThumbMask,
+		ProtocolVersion: protocolVersion, FirmwareVersion: firmwareVersion,
+		ActiveButtons: activeButtons, ActiveButtonsMask: activeButtonsMask,
 		History: historyCopy, ErrorMsg: a.errorMsg, SerialPort: a.serialPort, PortItems: portItemsCopy,
 	}
 }
