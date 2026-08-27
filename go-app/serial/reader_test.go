@@ -69,15 +69,43 @@ func TestParseCompactFormat(t *testing.T) {
 			}
 
 			if len(got.Buttons) != len(tt.want.Buttons) {
-				t.Fatalf("unexpected button count: got %+v want %+v", got, tt.want)
+				t.Fatalf("unexpected button count: got %+v want %+v", got.Buttons, tt.want.Buttons)
 			}
 
 			for i := range got.Buttons {
 				if got.Buttons[i] != tt.want.Buttons[i] {
-					t.Fatalf("unexpected buttons: got %+v want %+v", got, tt.want)
+					t.Fatalf("unexpected buttons: got %+v want %+v", got.Buttons, tt.want.Buttons)
 				}
 			}
 		})
+	}
+}
+
+func TestParseV2RejectsFuzzDiscoveredZeroSequenceAndEmptyLanguage(t *testing.T) {
+	const input = "v2,stroke,0,,0,0"
+	if msg, err := parseCompactFormat(input); err == nil {
+		t.Fatalf("fuzz regression: invalid semantic message parsed successfully: %+v", msg)
+	}
+}
+
+func TestParseV2SuccessImpliesSemanticValidity(t *testing.T) {
+	valid := []string{
+		"v2,ready,1,2.2.0,en,22,4",
+		"v2,armed,2",
+		"v2,stroke,3,ru,9,17",
+		"v2,tap,4,enter",
+		"v2,language,5,en",
+		"v2,status,6,1,ru,3,21",
+		"v2,error,7,hid_send_failed,2",
+	}
+	for _, input := range valid {
+		msg, err := parseCompactFormat(input)
+		if err != nil {
+			t.Fatalf("valid v2 input %q rejected: %v", input, err)
+		}
+		if !validateMessage(msg) {
+			t.Fatalf("successful v2 parse violates semantic-validity contract: %q -> %+v", input, msg)
+		}
 	}
 }
 
