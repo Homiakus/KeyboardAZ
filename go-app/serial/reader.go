@@ -67,7 +67,7 @@ func NewReader(portName string, baudRate int) (*Reader, error) {
 }
 
 func (r *Reader) Messages() <-chan protocol.Event { return r.messages }
-func (r *Reader) Errors() <-chan error            { return r.errors }
+func (r *Reader) Errors() <-chan error           { return r.errors }
 
 // Health returns a privacy-safe process-level snapshot. It is intentionally
 // independent from GUI state so diagnostics continue to work while the window
@@ -138,7 +138,11 @@ func (r *Reader) readLoop() {
 			continue
 		}
 
-		telemetry.Process().ObserveTransportMessage(msg.Protocol, msg.Sequence, msg.Type, msg.Firmware)
+		stream := "cdc-v1"
+		if msg.Protocol == 2 {
+			stream = "cdc-v2"
+		}
+		telemetry.Process().ObserveTransportMessageOn(stream, msg.Protocol, msg.Sequence, msg.Type, msg.Firmware)
 
 		select {
 		case r.messages <- msg:
