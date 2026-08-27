@@ -23,18 +23,14 @@
 #include <hardware/gpio.h>
 #endif
 
+#include "input_debounce.h"
 #include "text_input_config.h"
 
 using namespace HapticpadTextInput;
 
 namespace {
 
-struct DebouncedInput {
-    bool rawPressed;
-    bool stablePressed;
-    bool previousStablePressed;
-    uint32_t rawChangedAtUs;
-};
+using HapticpadInput::DebouncedInput;
 
 struct ThumbRuntime {
     bool down;
@@ -256,7 +252,7 @@ void initializeInputs(uint32_t nowUs) {
     for (uint8_t i = 0; i < kTotalButtonCount; ++i) {
         pinMode(kButtonPins[i], INPUT_PULLUP);
         const bool pressed = digitalRead(kButtonPins[i]) == LOW;
-        g_inputs[i] = {pressed, pressed, pressed, nowUs};
+        g_inputs[i] = HapticpadInput::makeDebouncedInput(pressed, nowUs);
     }
     clearThumbRuntime();
 }
@@ -276,33 +272,26 @@ void sampleInputs(uint32_t nowUs) {
         const bool rawPressed = digitalRead(kButtonPins[i]) == LOW;
 #endif
 
-        if (rawPressed != input.rawPressed) {
-            input.rawPressed = rawPressed;
-            input.rawChangedAtUs = nowUs;
-        }
-
-        if (input.stablePressed == input.rawPressed) {
-            continue;
-        }
-
-        const uint32_t requiredUs = input.rawPressed ? kPressDebounceUs : kReleaseDebounceUs;
-        if (elapsedUs(nowUs, input.rawChangedAtUs) >= requiredUs) {
-            input.stablePressed = input.rawPressed;
-        }
+        HapticpadInput::observeRaw(input, rawPressed, nowUs);
+        HapticpadInput::advanceDebounce(
+            input,
+            nowUs,
+            kPressDebounceUs,
+            kReleaseDebounceUs);
     }
 }
 
 bool pressedEdge(uint8_t index) {
-    return g_inputs[index].stablePressed && !g_inputs[index].previousStablePressed;
+    return HapticpadInput::pressedEdge(g_inputs[index]);
 }
 
 bool releasedEdge(uint8_t index) {
-    return !g_inputs[index].stablePressed && g_inputs[index].previousStablePressed;
+    return HapticpadInput::releasedEdge(g_inputs[index]);
 }
 
 void commitInputEdges() {
     for (uint8_t i = 0; i < kTotalButtonCount; ++i) {
-        g_inputs[i].previousStablePressed = g_inputs[i].stablePressed;
+        HapticpadInput::commitEdge(g_inputs[i]);
     }
 }
 
