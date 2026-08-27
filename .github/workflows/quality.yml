@@ -39,7 +39,7 @@ jobs:
             layoutedit/catalog.go layoutedit/catalog_test.go layoutedit/preview.go layoutedit/preview_test.go
             workspace/paths.go workspace/paths_test.go
             architecture/boundaries_test.go architecture/shell_boundaries_test.go
-            serial/reader.go serial/event.go
+            serial/reader.go serial/event_test.go
             handler/actions.go handler/keyboard_windows.go handler/telemetry_test.go
           )
           unformatted="$(gofmt -l "${files[@]}")"
