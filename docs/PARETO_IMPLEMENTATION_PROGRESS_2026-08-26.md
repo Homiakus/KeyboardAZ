@@ -18,6 +18,24 @@ Privacy invariant сохранён: содержимое введённого т
 
 Sequence telemetry stream-aware: `cdc-v1`, `cdc-v2` и `hid-v3` имеют независимые sequence epochs/counters, поэтому interleaved CDC control/status не создаёт ложных HID packet-loss сигналов.
 
+#### Application-owned telemetry recorder
+
+Process-global telemetry удалена из production dependency graph.
+
+В composition root создаётся один `health := telemetry.NewHealth()`, который явно передаётся в:
+
+- `connection.NewManagerWithRecorder`;
+- `serial.NewReaderWithRecorder` для CDC;
+- `realtimeOpenFromEnvironmentWithRecorder` → HID v3 reader;
+- `handler.NewHandlerWithRecorder`;
+- Windows keyboard backend и `SendInput` recording.
+
+`telemetry.Process()` сохранён только как compatibility surface для старых constructors/tests. Operational paths используют instance-owned `telemetry.Recorder`.
+
+Добавлены isolation tests: разные handler/serial/connection instances могут иметь независимые counters. `serial.Reader` также остаётся nil-safe для старых тестов/встраивания, где структура могла создаваться вручную без constructor.
+
+Permanent architecture fitness test требует единый application-owned recorder в `main` и запрещает обход DI через `telemetry.Process().Record*`/`Observe*` в realtime transport/SendInput operational paths.
+
 ### P0 — stable identity и reconnect lifecycle
 
 Реализованы:
@@ -186,6 +204,7 @@ Permanent `quality` workflow включает:
 - `govulncheck@v1.7.0`;
 - resolver/protocol benchmarks;
 - architecture fitness tests;
+- telemetry recorder isolation tests;
 - native firmware tests;
 - реальные PlatformIO builds для `pico` и `pico-hid-v3`;
 - explicit workspace/workspacemigrate gates.
@@ -203,17 +222,16 @@ Firmware toolchain pinned:
 - CDC v2 поэтому остаётся production default;
 - debounce timings не снижались без измерений;
 - firmware semantic state machine ещё можно дополнительно разделить на input/semantic/protocol/transport modules;
-- process-level `telemetry.Process()` ещё используется рядом adapters и должен быть заменён injected `HealthSink`/recorder;
-- после telemetry injection можно сократить последние process-global dependencies и улучшить multi-device testability;
+- compatibility constructors всё ещё могут использовать `telemetry.Process()`, но production composition root и operational paths от singleton уже не зависят;
 - после физического baseline можно исследовать eager-press/defer-release debounce для main keys; thumb/modifier должны оставаться conservative до отдельного stress/HIL.
 
 ## Следующий Pareto-этап
 
-1. Убрать process-global telemetry singleton из production components через injected recorder/`HealthSink`, сохранив compatibility constructors.
-2. Довести composition root до одного явно созданного health accumulator, общего для CDC/HID/connection/handler/SendInput.
-3. Добавить architecture test, запрещающий `telemetry.Process()` внутри transport/application components.
-4. После этого собрать физический CDC-v2 baseline 10k+ strokes и сопоставимый HID-v3 dataset.
-5. Сделать HID default только если promotion gate подтверждает correctness и измеренный tail-latency выигрыш.
-6. Только после baseline исследовать новый debounce policy.
+1. Собрать физический CDC-v2 baseline 10k+ strokes с fixture E2E timestamps.
+2. Собрать сопоставимый HID-v3 dataset 10k+ strokes на том же устройстве/host/load profile.
+3. Прогнать `tools/latency-compare`; делать HID default только при zero correctness regressions, ≥20% p95 improvement и без p99 regression.
+4. После transport baseline исследовать eager-press/defer-release debounce для main keys; thumb/modifier оставить conservative до отдельного 100k-cycle stress/HIL.
+5. Параллельно разделить firmware semantic state machine на input acquisition / debounce / semantic engine / protocol encoding / transport adapters, не меняя текущую измеренную семантику.
+6. После firmware split добавить per-stage native tests и compile-time contracts, чтобы дальнейшая оптимизация latency не размывала границы.
 
 См. также `docs/PARETO_IMPLEMENTATION_PLAN_2026-08-26.md` и актуальный `docs/MODULARITY_AND_CONFIGURABILITY_AUDIT_2026-08-27.md`.
