@@ -50,4 +50,5 @@ jobs:
             exit 1
           fi
           git commit -m "refactor: isolate firmware debounce boundary"
+          git pull --rebase origin main
           git push origin HEAD:main
