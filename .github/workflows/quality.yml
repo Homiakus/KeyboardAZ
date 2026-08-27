@@ -34,8 +34,8 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
-      - run: go test -race ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
-      - run: go vet ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
+      - run: go test -race ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./inputtrace ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
+      - run: go vet ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./inputtrace ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
       - run: go test -bench=. -benchmem ./textinput ./transport ./hidv3
 
   go-1-27-compat:
@@ -56,8 +56,8 @@ jobs:
         run: |
           go version | grep 'go1.27.0'
           test "$(go env GOTOOLCHAIN)" = "local"
-      - run: go test -race ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
-      - run: go vet ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
+      - run: go test -race ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./inputtrace ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
+      - run: go vet ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./inputtrace ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
 
   windows-desktop:
     runs-on: windows-latest
@@ -75,8 +75,8 @@ jobs:
         run: |
           go version
           go env GOTOOLCHAIN
-      - run: go test ./action ./controls ./config ./serial ./textinput ./handler ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
-      - run: go test -race ./action ./controls ./protocol ./appcore ./telemetry ./handler ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture
+      - run: go test ./action ./controls ./config ./serial ./textinput ./handler ./protocol ./appcore ./inputtrace ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/latency ./tools/latency-compare ./tools/hid-capture
+      - run: go test -race ./action ./controls ./protocol ./appcore ./inputtrace ./telemetry ./handler ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture
       - run: go test .
       - run: go vet ./...
       - name: Vulnerability scan
