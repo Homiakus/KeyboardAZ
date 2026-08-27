@@ -25,7 +25,7 @@ func TestCorePackagesDoNotDependOnUIOrHigherLayers(t *testing.T) {
 		{dir: "textinput", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/device", "hapticpad-go-app/serial"}},
 		{dir: "layoutedit", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/device", "hapticpad-go-app/serial"}},
 		{dir: "appcore", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/device", "hapticpad-go-app/serial", "hapticpad-go-app/textinput", "hapticpad-go-app/config"}},
-		{dir: "connection", forbidden: []string{"gioui.org/", "hapticpad-go-app/handler", "hapticpad-go-app/textinput", "hapticpad-go-app/config"}},
+		{dir: "connection", forbidden: []string{"gioui.org/", "hapticpad-go-app/handler", "hapticpad-go-app/textinput", "hapticpad-go-app/config", "hapticpad-go-app/serial"}},
 	}
 
 	moduleRoot := filepath.Clean("..")
@@ -42,7 +42,6 @@ func TestCorePackagesDoNotDependOnUIOrHigherLayers(t *testing.T) {
 						if strings.HasPrefix(imported, forbidden) {
 							t.Errorf("%s imports forbidden higher-layer dependency %q", file, imported)
 						}
-					}
 				}
 			}
 		})
