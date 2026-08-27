@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"hapticpad-go-app/config"
+	domainaction "hapticpad-go-app/action"
 	"hapticpad-go-app/layoutedit"
 	"hapticpad-go-app/textinput"
 )
@@ -174,7 +174,7 @@ func (a *App) deleteEditorProfile(profile string) error {
 	return a.applyEditorLive("Профиль удалён из рабочей копии")
 }
 
-func (a *App) assignEditorAction(action *config.Action) error {
+func (a *App) assignEditorAction(action *domainaction.Action) error {
 	s := a.configurator
 	if s == nil || a.layoutEditor == nil {
 		return fmt.Errorf("layout editor is not initialized")

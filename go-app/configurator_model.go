@@ -4,39 +4,39 @@ import (
 	"fmt"
 	"strings"
 
-	"hapticpad-go-app/config"
+	domainaction "hapticpad-go-app/action"
 	"hapticpad-go-app/textinput"
 )
 
-const actionTypeNone config.ActionType = "none"
+const actionTypeNone domainaction.Type = "none"
 
 var configurableActionTypes = []struct {
-	Type config.ActionType
+	Type domainaction.Type
 	Name string
 	Hint string
 }{
 	{Type: actionTypeNone, Name: "Нет", Hint: "Кнопка ничего не делает"},
-	{Type: config.ActionText, Name: "Текст", Hint: "Любой Unicode-текст: буква, знак или фраза"},
-	{Type: config.ActionKey, Name: "Клавиша", Hint: "Например: space, enter, f5, mouse_left"},
-	{Type: config.ActionCombo, Name: "Сочетание", Hint: "Например: ctrl+shift+s"},
-	{Type: config.ActionCommand, Name: "Команда", Hint: "Команда или путь к программе"},
-	{Type: config.ActionMacro, Name: "Макрос", Hint: "Одно действие на строку: ctrl+c, text:готово, cmd:notepad.exe"},
+	{Type: domainaction.Text, Name: "Текст", Hint: "Любой Unicode-текст: буква, знак или фраза"},
+	{Type: domainaction.Key, Name: "Клавиша", Hint: "Например: space, enter, f5, mouse_left"},
+	{Type: domainaction.Combo, Name: "Сочетание", Hint: "Например: ctrl+shift+s"},
+	{Type: domainaction.Command, Name: "Команда", Hint: "Команда или путь к программе"},
+	{Type: domainaction.Macro, Name: "Макрос", Hint: "Одно действие на строку: ctrl+c, text:готово, cmd:notepad.exe"},
 }
 
-func actionToEditor(action config.Action, ok bool) (config.ActionType, string) {
+func actionToEditor(action domainaction.Action, ok bool) (domainaction.Type, string) {
 	if !ok || action.Type == "" {
 		return actionTypeNone, ""
 	}
 	switch action.Type {
-	case config.ActionText:
+	case domainaction.Text:
 		return action.Type, action.Text
-	case config.ActionKey:
+	case domainaction.Key:
 		return action.Type, action.Key
-	case config.ActionCombo:
+	case domainaction.Combo:
 		return action.Type, strings.Join(action.Keys, "+")
-	case config.ActionCommand:
+	case domainaction.Command:
 		return action.Type, action.Command
-	case config.ActionMacro:
+	case domainaction.Macro:
 		lines := make([]string, 0, len(action.Macro))
 		for _, step := range action.Macro {
 			lines = append(lines, actionShortcut(step))
@@ -47,66 +47,66 @@ func actionToEditor(action config.Action, ok bool) (config.ActionType, string) {
 	}
 }
 
-func actionShortcut(action config.Action) string {
+func actionShortcut(action domainaction.Action) string {
 	switch action.Type {
-	case config.ActionText:
+	case domainaction.Text:
 		return "text:" + action.Text
-	case config.ActionKey:
+	case domainaction.Key:
 		return action.Key
-	case config.ActionCombo:
+	case domainaction.Combo:
 		return strings.Join(action.Keys, "+")
-	case config.ActionCommand:
+	case domainaction.Command:
 		return "cmd:" + action.Command
-	case config.ActionMacro:
+	case domainaction.Macro:
 		return fmt.Sprintf("macro(%d)", len(action.Macro))
 	default:
 		return ""
 	}
 }
 
-func actionFromEditor(actionType config.ActionType, value string) (*config.Action, error) {
+func actionFromEditor(actionType domainaction.Type, value string) (*domainaction.Action, error) {
 	value = strings.TrimSpace(value)
-	var action config.Action
+	var action domainaction.Action
 	switch actionType {
 	case actionTypeNone, "":
 		return nil, nil
-	case config.ActionText:
+	case domainaction.Text:
 		if value == "" {
 			return nil, fmt.Errorf("введите текст или символ")
 		}
-		action = config.Action{Type: config.ActionText, Text: value}
-	case config.ActionKey:
+		action = domainaction.Action{Type: domainaction.Text, Text: value}
+	case domainaction.Key:
 		if value == "" {
 			return nil, fmt.Errorf("введите имя клавиши")
 		}
-		action = config.Action{Type: config.ActionKey, Key: value}
-	case config.ActionCombo:
-		parsed, err := config.ParseActionShortcut(value)
+		action = domainaction.Action{Type: domainaction.Key, Key: value}
+	case domainaction.Combo:
+		parsed, err := domainaction.ParseShortcut(value)
 		if err != nil {
 			return nil, err
 		}
-		if parsed.Type != config.ActionCombo {
+		if parsed.Type != domainaction.Combo {
 			return nil, fmt.Errorf("сочетание должно содержать минимум две клавиши через +")
 		}
 		action = parsed
-	case config.ActionCommand:
+	case domainaction.Command:
 		if value == "" {
 			return nil, fmt.Errorf("введите команду")
 		}
-		action = config.Action{Type: config.ActionCommand, Command: value}
-	case config.ActionMacro:
+		action = domainaction.Action{Type: domainaction.Command, Command: value}
+	case domainaction.Macro:
 		lines := strings.Split(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
-		steps := make([]config.Action, 0, len(lines))
+		steps := make([]domainaction.Action, 0, len(lines))
 		for lineNumber, line := range lines {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.HasPrefix(line, "#") {
 				continue
 			}
-			step, err := config.ParseActionShortcut(line)
+			step, err := domainaction.ParseShortcut(line)
 			if err != nil {
 				return nil, fmt.Errorf("строка %d: %w", lineNumber+1, err)
 			}
-			if step.Type == config.ActionMacro {
+			if step.Type == domainaction.Macro {
 				return nil, fmt.Errorf("строка %d: вложенный макрос не поддерживается", lineNumber+1)
 			}
 			steps = append(steps, step)
@@ -114,12 +114,12 @@ func actionFromEditor(actionType config.ActionType, value string) (*config.Actio
 		if len(steps) == 0 {
 			return nil, fmt.Errorf("добавьте хотя бы один шаг макроса")
 		}
-		action = config.Action{Type: config.ActionMacro, Macro: steps}
+		action = domainaction.Action{Type: domainaction.Macro, Macro: steps}
 	default:
 		return nil, fmt.Errorf("неизвестный тип действия %q", actionType)
 	}
-	action = config.NormalizeAction(action)
-	if err := config.ValidateAction(action); err != nil {
+	action = domainaction.Normalize(action)
+	if err := domainaction.Validate(action); err != nil {
 		return nil, err
 	}
 	return &action, nil
@@ -142,10 +142,10 @@ func calculateModeStats(layout *textinput.LayoutConfig, profile, language, mode 
 			continue
 		}
 		stats.Assigned++
-		if action.Type == config.ActionCommand || action.Type == config.ActionMacro {
+		if action.Type == domainaction.Command || action.Type == domainaction.Macro {
 			stats.Background++
 		}
-		key := string(action.Type) + "|" + config.ActionSummary(action)
+		key := string(action.Type) + "|" + domainaction.Summary(action)
 		seen[key]++
 	}
 	for _, count := range seen {

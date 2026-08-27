@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	domainaction "hapticpad-go-app/action"
 	"hapticpad-go-app/config"
 	"hapticpad-go-app/layoutedit"
 	"hapticpad-go-app/textinput"
@@ -31,7 +32,7 @@ type ConfiguratorState struct {
 	selectedMode     string
 	selectedButton   int
 	selectedThumb    string
-	actionType       config.ActionType
+	actionType       domainaction.Type
 
 	profileButtons map[string]*widget.Clickable
 	profileList    widget.List
@@ -84,7 +85,7 @@ func NewConfiguratorState(layoutConfig *textinput.LayoutConfig) *ConfiguratorSta
 		selectedLanguage: textinput.LanguageEnglish,
 		selectedMode:     "letters",
 		selectedButton:   0,
-		actionType:       config.ActionText,
+		actionType:       domainaction.Text,
 		profileButtons:   map[string]*widget.Clickable{},
 	}
 	state.profileList.List.Axis = layout.Horizontal
@@ -138,7 +139,7 @@ func (s *ConfiguratorState) loadSelection(layoutConfig *textinput.LayoutConfig) 
 	if profile != nil {
 		s.profileNameEditor.SetText(profile.Name)
 	}
-	var action config.Action
+	var action domainaction.Action
 	var ok bool
 	if s.selectedThumb != "" {
 		action, ok = textinput.GetThumbTap(layoutConfig, s.selectedProfile, s.selectedThumb)
@@ -618,7 +619,7 @@ func (a *App) layoutConfigKeyTile(gtx layout.Context, button int) layout.Dimensi
 	action, ok := textinput.GetBinding(a.layoutDraft, s.selectedProfile, s.selectedLanguage, s.selectedMode, button)
 	summary := "—"
 	if ok {
-		summary = config.ActionSummary(action)
+		summary = domainaction.Summary(action)
 	}
 	selected := s.selectedThumb == "" && s.selectedButton == button
 	active := a.activeButtonsMask&(1<<uint(button)) != 0
@@ -696,7 +697,7 @@ func (a *App) layoutThumbRow(gtx layout.Context) layout.Dimensions {
 							tapSummary := "Переключить EN/RU"
 							if !thumb.fixed {
 								if action, ok := textinput.GetThumbTap(a.layoutDraft, s.selectedProfile, thumb.tap); ok {
-									tapSummary = config.ActionSummary(action)
+									tapSummary = domainaction.Summary(action)
 								} else {
 									tapSummary = "—"
 								}
@@ -768,7 +769,7 @@ func (a *App) layoutActionEditor(gtx layout.Context) layout.Dimensions {
 			s.editorError = err.Error()
 		} else if action == nil {
 			s.editorError = "Нет действия для проверки"
-		} else if (action.Type == config.ActionCommand || action.Type == config.ActionMacro) && !s.dangerousTestArmed {
+		} else if (action.Type == domainaction.Command || action.Type == domainaction.Macro) && !s.dangerousTestArmed {
 			s.dangerousTestArmed = true
 			s.editorError = "Exec-действие может запустить внешнюю команду. Нажмите Проверить ещё раз для подтверждения."
 		} else {
