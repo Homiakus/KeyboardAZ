@@ -233,7 +233,7 @@ func (r *Runtime) pumpSession(ctx context.Context, session Session) bool {
 			}
 		case event, ok := <-messages:
 			if !ok {
-				r.handleSessionFailure(io.EOF)
+				r.handleSessionFailure(session, io.EOF)
 				return true
 			}
 			if !r.publishMessage(ctx, event) {
@@ -241,13 +241,13 @@ func (r *Runtime) pumpSession(ctx context.Context, session Session) bool {
 			}
 		case err, ok := <-errorsCh:
 			if !ok {
-				r.handleSessionFailure(io.EOF)
+				r.handleSessionFailure(session, io.EOF)
 				return true
 			}
 			if err == nil {
 				err = io.EOF
 			}
-			r.handleSessionFailure(err)
+			r.handleSessionFailure(session, err)
 			return true
 		}
 	}
@@ -273,9 +273,10 @@ func (r *Runtime) publishMessage(ctx context.Context, event protocol.Event) bool
 	}
 }
 
-func (r *Runtime) handleSessionFailure(err error) {
-	r.publishError(fmt.Errorf("KeyboardAZ session lost: %w", err))
-	r.controller.StartRecovery(err)
+func (r *Runtime) handleSessionFailure(session Session, err error) {
+	if r.controller.StartRecoveryIfCurrent(session, err) {
+		r.publishError(fmt.Errorf("KeyboardAZ session lost: %w", err))
+	}
 }
 
 func (r *Runtime) waitAndRecover(ctx context.Context, snapshot Snapshot) bool {
