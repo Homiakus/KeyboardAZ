@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"hapticpad-go-app/device"
+	"hapticpad-go-app/protocol"
 	appserial "hapticpad-go-app/serial"
 )
 
@@ -50,7 +51,7 @@ type Controller struct {
 	reference        device.Identity
 	current          device.Candidate
 	session          Session
-	pending          []appserial.ButtonMessage
+	pending          []protocol.Event
 	discover         DiscoverFunc
 	open             OpenFunc
 	handshakeTimeout time.Duration
@@ -149,15 +150,18 @@ func (c *Controller) Session() Session {
 	return c.session
 }
 
-// TakePending returns messages consumed by the identity handshake exactly once.
-// The GUI/message pump should dispatch them before reading Session().Messages().
-func (c *Controller) TakePending() []appserial.ButtonMessage {
+// TakePending returns events consumed by the identity handshake exactly once.
+// The application pump dispatches them before reading Session().Messages().
+func (c *Controller) TakePending() []protocol.Event {
 	if c == nil {
 		return nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	pending := append([]appserial.ButtonMessage(nil), c.pending...)
+	pending := make([]protocol.Event, len(c.pending))
+	for i, event := range c.pending {
+		pending[i] = event.Clone()
+	}
 	c.pending = c.pending[:0]
 	return pending
 }
@@ -302,13 +306,16 @@ func (c *Controller) openAndHandshake(ctx context.Context, candidate device.Cand
 	return session, handshake, nil
 }
 
-func (c *Controller) installSession(candidate device.Candidate, session Session, pending []appserial.ButtonMessage, explicit bool) Session {
+func (c *Controller) installSession(candidate device.Candidate, session Session, pending []protocol.Event, explicit bool) Session {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	old := c.session
 	c.session = session
 	c.current = candidate
-	c.pending = append(c.pending[:0], pending...)
+	c.pending = c.pending[:0]
+	for _, event := range pending {
+		c.pending = append(c.pending, event.Clone())
+	}
 
 	identity := candidate.Identity.Normalized()
 	if identity.HasUSBPair() {
