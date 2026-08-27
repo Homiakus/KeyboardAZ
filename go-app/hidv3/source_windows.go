@@ -25,15 +25,15 @@ const (
 )
 
 var (
-	setupapi                       = windows.NewLazySystemDLL("setupapi.dll")
-	hidDLL                         = windows.NewLazySystemDLL("hid.dll")
-	procSetupDiGetClassDevsW       = setupapi.NewProc("SetupDiGetClassDevsW")
-	procSetupDiEnumDeviceInterfaces = setupapi.NewProc("SetupDiEnumDeviceInterfaces")
+	setupapi                             = windows.NewLazySystemDLL("setupapi.dll")
+	hidDLL                               = windows.NewLazySystemDLL("hid.dll")
+	procSetupDiGetClassDevsW             = setupapi.NewProc("SetupDiGetClassDevsW")
+	procSetupDiEnumDeviceInterfaces      = setupapi.NewProc("SetupDiEnumDeviceInterfaces")
 	procSetupDiGetDeviceInterfaceDetailW = setupapi.NewProc("SetupDiGetDeviceInterfaceDetailW")
-	procSetupDiDestroyDeviceInfoList = setupapi.NewProc("SetupDiDestroyDeviceInfoList")
-	procHidDGetAttributes          = hidDLL.NewProc("HidD_GetAttributes")
-	procHidDGetSerialNumberString  = hidDLL.NewProc("HidD_GetSerialNumberString")
-	procHidDGetProductString       = hidDLL.NewProc("HidD_GetProductString")
+	procSetupDiDestroyDeviceInfoList     = setupapi.NewProc("SetupDiDestroyDeviceInfoList")
+	procHidDGetAttributes                = hidDLL.NewProc("HidD_GetAttributes")
+	procHidDGetSerialNumberString        = hidDLL.NewProc("HidD_GetSerialNumberString")
+	procHidDGetProductString             = hidDLL.NewProc("HidD_GetProductString")
 )
 
 var hidInterfaceGUID = windows.GUID{
@@ -67,9 +67,9 @@ type hidAttributes struct {
 type Reader struct {
 	handle windows.Handle
 
-	messages chan protocol.Event
-	errors   chan error
-	done     chan struct{}
+	messages  chan protocol.Event
+	errors    chan error
+	done      chan struct{}
 	closeOnce sync.Once
 }
 
@@ -245,7 +245,7 @@ func OpenCandidate(candidate Candidate) (*Reader, error) {
 }
 
 func (r *Reader) Messages() <-chan protocol.Event { return r.messages }
-func (r *Reader) Errors() <-chan error           { return r.errors }
+func (r *Reader) Errors() <-chan error            { return r.errors }
 
 func (r *Reader) Close() error {
 	if r == nil {

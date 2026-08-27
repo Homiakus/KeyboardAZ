@@ -25,7 +25,7 @@ func newFakeEventSource() *fakeEventSource {
 }
 
 func (s *fakeEventSource) Messages() <-chan protocol.Event { return s.messages }
-func (s *fakeEventSource) Errors() <-chan error           { return s.errors }
+func (s *fakeEventSource) Errors() <-chan error            { return s.errors }
 func (s *fakeEventSource) Close() error {
 	s.once.Do(func() { close(s.done) })
 	return nil

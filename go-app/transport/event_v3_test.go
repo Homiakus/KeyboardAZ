@@ -25,9 +25,9 @@ func TestEventFromV3Stroke(t *testing.T) {
 
 func TestEventFromV3TapAndLanguage(t *testing.T) {
 	for _, tc := range []struct {
-		report ReportV3
+		report   ReportV3
 		typeName string
-		action string
+		action   string
 		language string
 	}{
 		{ReportV3{Type: EventTap, Language: LanguageEnglish, ButtonOrAction: uint8(TapEnter), Sequence: 1}, "tap", "enter", "en"},
