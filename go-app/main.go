@@ -252,7 +252,13 @@ func run(w *app.Window) error {
 		}
 		startupError += fmt.Sprintf("Device identity load failed: %v", identityErr)
 	}
-	controller := connection.NewController(identity, baudRate)
+	controller := connection.NewControllerWithOptions(connection.ControllerOptions{
+		Reference: identity,
+		BaudRate:  baudRate,
+		Open: func(portName string) (connection.Session, error) {
+			return serial.NewReader(portName, baudRate)
+		},
+	})
 	connectionRuntime := connection.NewRuntime(controller)
 	connectionRuntime.Start()
 	coreState := appcore.NewState()
