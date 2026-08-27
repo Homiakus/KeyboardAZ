@@ -3,7 +3,7 @@ package layoutedit
 import (
 	"sort"
 
-	"hapticpad-go-app/config"
+	domainaction "hapticpad-go-app/action"
 	"hapticpad-go-app/textinput"
 )
 
@@ -56,12 +56,12 @@ func Analyze(layout *textinput.LayoutConfig) Diagnostics {
 					}
 					row.Assigned++
 					switch action.Type {
-					case config.ActionCommand:
+					case domainaction.Command:
 						row.Commands++
-					case config.ActionMacro:
+					case domainaction.Macro:
 						row.Macros++
 					}
-					key := string(action.Type) + "|" + config.ActionSummary(action)
+					key := string(action.Type) + "|" + domainaction.Summary(action)
 					seen[key]++
 				}
 				for _, count := range seen {

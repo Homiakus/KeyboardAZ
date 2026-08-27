@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"hapticpad-go-app/config"
+	domainaction "hapticpad-go-app/action"
 )
 
 type ActionPreset struct {
@@ -12,30 +12,30 @@ type ActionPreset struct {
 	Name     string
 	Category string
 	Keywords []string
-	Action   config.Action
+	Action   domainaction.Action
 }
 
 var builtinActionPresets = []ActionPreset{
-	{ID: "key-space", Name: "Пробел", Category: "Редактирование", Keywords: []string{"space", "пробел"}, Action: config.Action{Type: config.ActionKey, Key: "space"}},
-	{ID: "key-enter", Name: "Enter", Category: "Редактирование", Keywords: []string{"enter", "return", "ввод"}, Action: config.Action{Type: config.ActionKey, Key: "enter"}},
-	{ID: "key-backspace", Name: "Backspace", Category: "Редактирование", Keywords: []string{"backspace", "стереть", "назад"}, Action: config.Action{Type: config.ActionKey, Key: "backspace"}},
-	{ID: "key-delete", Name: "Delete", Category: "Редактирование", Keywords: []string{"delete", "удалить"}, Action: config.Action{Type: config.ActionKey, Key: "delete"}},
-	{ID: "key-tab", Name: "Tab", Category: "Навигация", Keywords: []string{"tab", "таб"}, Action: config.Action{Type: config.ActionKey, Key: "tab"}},
-	{ID: "key-escape", Name: "Escape", Category: "Навигация", Keywords: []string{"escape", "esc", "отмена"}, Action: config.Action{Type: config.ActionKey, Key: "escape"}},
-	{ID: "key-left", Name: "Стрелка влево", Category: "Навигация", Keywords: []string{"left", "arrow", "влево"}, Action: config.Action{Type: config.ActionKey, Key: "left"}},
-	{ID: "key-right", Name: "Стрелка вправо", Category: "Навигация", Keywords: []string{"right", "arrow", "вправо"}, Action: config.Action{Type: config.ActionKey, Key: "right"}},
-	{ID: "key-up", Name: "Стрелка вверх", Category: "Навигация", Keywords: []string{"up", "arrow", "вверх"}, Action: config.Action{Type: config.ActionKey, Key: "up"}},
-	{ID: "key-down", Name: "Стрелка вниз", Category: "Навигация", Keywords: []string{"down", "arrow", "вниз"}, Action: config.Action{Type: config.ActionKey, Key: "down"}},
-	{ID: "key-home", Name: "Home", Category: "Навигация", Keywords: []string{"home", "начало"}, Action: config.Action{Type: config.ActionKey, Key: "home"}},
-	{ID: "key-end", Name: "End", Category: "Навигация", Keywords: []string{"end", "конец"}, Action: config.Action{Type: config.ActionKey, Key: "end"}},
-	{ID: "combo-copy", Name: "Копировать", Category: "Комбинации", Keywords: []string{"copy", "копировать", "ctrl c"}, Action: config.Action{Type: config.ActionCombo, Keys: []string{"ctrl", "c"}}},
-	{ID: "combo-paste", Name: "Вставить", Category: "Комбинации", Keywords: []string{"paste", "вставить", "ctrl v"}, Action: config.Action{Type: config.ActionCombo, Keys: []string{"ctrl", "v"}}},
-	{ID: "combo-cut", Name: "Вырезать", Category: "Комбинации", Keywords: []string{"cut", "вырезать", "ctrl x"}, Action: config.Action{Type: config.ActionCombo, Keys: []string{"ctrl", "x"}}},
-	{ID: "combo-undo", Name: "Отменить", Category: "Комбинации", Keywords: []string{"undo", "отменить", "ctrl z"}, Action: config.Action{Type: config.ActionCombo, Keys: []string{"ctrl", "z"}}},
-	{ID: "combo-redo", Name: "Повторить", Category: "Комбинации", Keywords: []string{"redo", "повторить", "ctrl y"}, Action: config.Action{Type: config.ActionCombo, Keys: []string{"ctrl", "y"}}},
-	{ID: "combo-save", Name: "Сохранить", Category: "Комбинации", Keywords: []string{"save", "сохранить", "ctrl s"}, Action: config.Action{Type: config.ActionCombo, Keys: []string{"ctrl", "s"}}},
-	{ID: "combo-find", Name: "Найти", Category: "Комбинации", Keywords: []string{"find", "search", "найти", "ctrl f"}, Action: config.Action{Type: config.ActionCombo, Keys: []string{"ctrl", "f"}}},
-	{ID: "combo-select-all", Name: "Выделить всё", Category: "Комбинации", Keywords: []string{"select all", "выделить всё", "ctrl a"}, Action: config.Action{Type: config.ActionCombo, Keys: []string{"ctrl", "a"}}},
+	{ID: "key-space", Name: "Пробел", Category: "Редактирование", Keywords: []string{"space", "пробел"}, Action: domainaction.Action{Type: domainaction.Key, Key: "space"}},
+	{ID: "key-enter", Name: "Enter", Category: "Редактирование", Keywords: []string{"enter", "return", "ввод"}, Action: domainaction.Action{Type: domainaction.Key, Key: "enter"}},
+	{ID: "key-backspace", Name: "Backspace", Category: "Редактирование", Keywords: []string{"backspace", "стереть", "назад"}, Action: domainaction.Action{Type: domainaction.Key, Key: "backspace"}},
+	{ID: "key-delete", Name: "Delete", Category: "Редактирование", Keywords: []string{"delete", "удалить"}, Action: domainaction.Action{Type: domainaction.Key, Key: "delete"}},
+	{ID: "key-tab", Name: "Tab", Category: "Навигация", Keywords: []string{"tab", "таб"}, Action: domainaction.Action{Type: domainaction.Key, Key: "tab"}},
+	{ID: "key-escape", Name: "Escape", Category: "Навигация", Keywords: []string{"escape", "esc", "отмена"}, Action: domainaction.Action{Type: domainaction.Key, Key: "escape"}},
+	{ID: "key-left", Name: "Стрелка влево", Category: "Навигация", Keywords: []string{"left", "arrow", "влево"}, Action: domainaction.Action{Type: domainaction.Key, Key: "left"}},
+	{ID: "key-right", Name: "Стрелка вправо", Category: "Навигация", Keywords: []string{"right", "arrow", "вправо"}, Action: domainaction.Action{Type: domainaction.Key, Key: "right"}},
+	{ID: "key-up", Name: "Стрелка вверх", Category: "Навигация", Keywords: []string{"up", "arrow", "вверх"}, Action: domainaction.Action{Type: domainaction.Key, Key: "up"}},
+	{ID: "key-down", Name: "Стрелка вниз", Category: "Навигация", Keywords: []string{"down", "arrow", "вниз"}, Action: domainaction.Action{Type: domainaction.Key, Key: "down"}},
+	{ID: "key-home", Name: "Home", Category: "Навигация", Keywords: []string{"home", "начало"}, Action: domainaction.Action{Type: domainaction.Key, Key: "home"}},
+	{ID: "key-end", Name: "End", Category: "Навигация", Keywords: []string{"end", "конец"}, Action: domainaction.Action{Type: domainaction.Key, Key: "end"}},
+	{ID: "combo-copy", Name: "Копировать", Category: "Комбинации", Keywords: []string{"copy", "копировать", "ctrl c"}, Action: domainaction.Action{Type: domainaction.Combo, Keys: []string{"ctrl", "c"}}},
+	{ID: "combo-paste", Name: "Вставить", Category: "Комбинации", Keywords: []string{"paste", "вставить", "ctrl v"}, Action: domainaction.Action{Type: domainaction.Combo, Keys: []string{"ctrl", "v"}}},
+	{ID: "combo-cut", Name: "Вырезать", Category: "Комбинации", Keywords: []string{"cut", "вырезать", "ctrl x"}, Action: domainaction.Action{Type: domainaction.Combo, Keys: []string{"ctrl", "x"}}},
+	{ID: "combo-undo", Name: "Отменить", Category: "Комбинации", Keywords: []string{"undo", "отменить", "ctrl z"}, Action: domainaction.Action{Type: domainaction.Combo, Keys: []string{"ctrl", "z"}}},
+	{ID: "combo-redo", Name: "Повторить", Category: "Комбинации", Keywords: []string{"redo", "повторить", "ctrl y"}, Action: domainaction.Action{Type: domainaction.Combo, Keys: []string{"ctrl", "y"}}},
+	{ID: "combo-save", Name: "Сохранить", Category: "Комбинации", Keywords: []string{"save", "сохранить", "ctrl s"}, Action: domainaction.Action{Type: domainaction.Combo, Keys: []string{"ctrl", "s"}}},
+	{ID: "combo-find", Name: "Найти", Category: "Комбинации", Keywords: []string{"find", "search", "найти", "ctrl f"}, Action: domainaction.Action{Type: domainaction.Combo, Keys: []string{"ctrl", "f"}}},
+	{ID: "combo-select-all", Name: "Выделить всё", Category: "Комбинации", Keywords: []string{"select all", "выделить всё", "ctrl a"}, Action: domainaction.Action{Type: domainaction.Combo, Keys: []string{"ctrl", "a"}}},
 }
 
 func ActionPresets() []ActionPreset {
@@ -112,6 +112,6 @@ func presetScore(preset ActionPreset, query string) int {
 
 func clonePreset(preset ActionPreset) ActionPreset {
 	preset.Keywords = append([]string(nil), preset.Keywords...)
-	preset.Action = config.CloneAction(preset.Action)
+	preset.Action = domainaction.Clone(preset.Action)
 	return preset
 }

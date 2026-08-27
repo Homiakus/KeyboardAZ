@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"sort"
 
+	domainaction "hapticpad-go-app/action"
 	"hapticpad-go-app/config"
 	"hapticpad-go-app/textinput"
 )
@@ -106,31 +107,31 @@ func PreviewImport(current, incoming *textinput.LayoutConfig) (ImportPreview, er
 	return preview, nil
 }
 
-func getBindingFromProfile(profile *textinput.Profile, language, mode string, button int) (config.Action, bool) {
+func getBindingFromProfile(profile *textinput.Profile, language, mode string, button int) (domainaction.Action, bool) {
 	if profile == nil || profile.Bindings == nil || profile.Bindings[language] == nil || profile.Bindings[language][mode] == nil {
-		return config.Action{}, false
+		return domainaction.Action{}, false
 	}
 	action, ok := profile.Bindings[language][mode][config.ButtonNames[button]]
-	return config.CloneAction(action), ok
+	return domainaction.Clone(action), ok
 }
 
-func getThumbFromProfile(profile *textinput.Profile, tap string) (config.Action, bool) {
+func getThumbFromProfile(profile *textinput.Profile, tap string) (domainaction.Action, bool) {
 	if profile == nil || profile.ThumbTaps == nil {
-		return config.Action{}, false
+		return domainaction.Action{}, false
 	}
 	action, ok := profile.ThumbTaps[tap]
-	return config.CloneAction(action), ok
+	return domainaction.Clone(action), ok
 }
 
-func actionsEqual(a, b config.Action) bool {
-	return reflect.DeepEqual(config.NormalizeAction(a), config.NormalizeAction(b))
+func actionsEqual(a, b domainaction.Action) bool {
+	return reflect.DeepEqual(domainaction.Normalize(a), domainaction.Normalize(b))
 }
 
-func countExecutable(preview *ImportPreview, action config.Action) {
+func countExecutable(preview *ImportPreview, action domainaction.Action) {
 	switch action.Type {
-	case config.ActionCommand:
+	case domainaction.Command:
 		preview.Commands++
-	case config.ActionMacro:
+	case domainaction.Macro:
 		preview.Macros++
 		for _, step := range action.Macro {
 			countExecutable(preview, step)

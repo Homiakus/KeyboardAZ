@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"hapticpad-go-app/config"
+	domainaction "hapticpad-go-app/action"
 	"hapticpad-go-app/textinput"
 )
 
@@ -24,7 +24,7 @@ type Session struct {
 	redo     []*textinput.LayoutConfig
 	limit    int
 
-	clipboard *config.Action
+	clipboard *domainaction.Action
 }
 
 func New(layout *textinput.LayoutConfig) (*Session, error) {
@@ -146,13 +146,13 @@ func (s *Session) Redo() bool {
 	return true
 }
 
-func (s *Session) SetBinding(profile, language, mode string, button int, action *config.Action) error {
+func (s *Session) SetBinding(profile, language, mode string, button int, action *domainaction.Action) error {
 	return s.mutate(func(draft *textinput.LayoutConfig) error {
 		return textinput.SetBinding(draft, profile, language, mode, button, action)
 	})
 }
 
-func (s *Session) SetThumbTap(profile, tap string, action *config.Action) error {
+func (s *Session) SetThumbTap(profile, tap string, action *domainaction.Action) error {
 	return s.mutate(func(draft *textinput.LayoutConfig) error {
 		return textinput.SetThumbTap(draft, profile, tap, action)
 	})
@@ -207,7 +207,7 @@ func (s *Session) CopyBinding(profile, language, mode string, button int) bool {
 		s.clipboard = nil
 		return false
 	}
-	copy := config.CloneAction(action)
+	copy := domainaction.Clone(action)
 	s.clipboard = &copy
 	return true
 }
@@ -221,7 +221,7 @@ func (s *Session) PasteBinding(profile, language, mode string, button int) error
 		s.mu.RUnlock()
 		return fmt.Errorf("binding clipboard is empty")
 	}
-	copy := config.CloneAction(*s.clipboard)
+	copy := domainaction.Clone(*s.clipboard)
 	s.mu.RUnlock()
 	return s.SetBinding(profile, language, mode, button, &copy)
 }
