@@ -49,6 +49,41 @@ func TestMainDoesNotOwnReconnectPolicy(t *testing.T) {
 	}
 }
 
+func TestShellDoesNotCacheSemanticInputState(t *testing.T) {
+	mainContent := readSource(t, "main.go")
+	for _, forbidden := range []string{
+		"activeButtonsMask uint32",
+		"currentLanguage  string",
+		"currentMode      string",
+		"currentModifiers uint8",
+		"activeThumbMask  uint8",
+		"protocolVersion  int",
+		"firmwareVersion  string",
+		"activeButtons    []int",
+	} {
+		if strings.Contains(mainContent, forbidden) {
+			t.Errorf("main.go regained duplicated semantic state %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"semantic = a.coreState.Snapshot()",
+		"CurrentLanguage: semantic.Language",
+		"ActiveButtonsMask: semantic.ActiveButtonsMask",
+	} {
+		if !strings.Contains(mainContent, required) {
+			t.Errorf("main.go lost appcore semantic read model %q", required)
+		}
+	}
+
+	configuratorContent := readSource(t, "configurator.go")
+	if strings.Contains(configuratorContent, "a.activeButtonsMask") {
+		t.Error("configurator.go bypasses appcore and reads a shell semantic cache")
+	}
+	if !strings.Contains(configuratorContent, "a.coreState.Snapshot().ActiveButtonsMask") {
+		t.Error("configurator.go no longer reads active-key state from appcore")
+	}
+}
+
 func TestCompositionRootInjectsConcreteCDCTransport(t *testing.T) {
 	content := readSource(t, "main.go")
 	for _, required := range []string{
