@@ -48,9 +48,9 @@ func TestDecodeInputReportPreservesClockDomains(t *testing.T) {
 
 func TestDecodeInputReportRejectsZeroReportID(t *testing.T) {
 	input := encodedInputReport(t, transport.ReportV3{
-		Type:           transport.EventLanguage,
-		Language:       transport.LanguageEnglish,
-		Sequence:       1,
+		Type:     transport.EventLanguage,
+		Language: transport.LanguageEnglish,
+		Sequence: 1,
 	})
 	input[0] = 0
 	if _, _, err := DecodeInputReport(input, time.Now()); err == nil {
@@ -89,14 +89,22 @@ func TestObserverFuncReceivesObservationExactly(t *testing.T) {
 }
 
 func BenchmarkDecodeInputReport(b *testing.B) {
-	input := encodedInputReport(&testing.T{}, transport.ReportV3{
+	report := transport.ReportV3{
 		Type:             transport.EventStroke,
 		Language:         transport.LanguageEnglish,
 		ButtonOrAction:   3,
 		Sequence:         1,
 		EventTimestampUS: 100,
-	})
+	}
+	payload, err := transport.EncodeV3(report)
+	if err != nil {
+		b.Fatal(err)
+	}
+	input := make([]byte, InputReportSize)
+	input[0] = 7
+	copy(input[1:], payload[:])
 	receivedAt := time.Unix(1_800_000_000, 0)
+
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
