@@ -1,0 +1,65 @@
+name: mutation-bootstrap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/mutation-bootstrap.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: go-app
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Green baseline before test-of-tests
+        run: go test -race ./action ./controls ./config ./serial ./textinput ./protocol ./appcore ./inputtrace ./telemetry ./device ./connection ./transport ./hidv3 ./hilcapture ./latencyreport ./layoutedit ./workspace ./workspacemigrate ./architecture ./tools/devloop
+      - name: Install pinned Gremlins
+        run: |
+          go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+          gremlins --version
+      - name: Run real diff-scoped mutation campaign
+        id: mutation
+        continue-on-error: true
+        run: |
+          gremlins unleash \
+            --config=.gremlins.yaml \
+            --diff="45b1c6208aa930f492f299dce78aef7e3c811027" \
+            --output=mutation-report.json
+      - name: Evaluate mutation policy
+        id: policy
+        continue-on-error: true
+        shell: bash
+        run: |
+          test -s mutation-report.json
+          go run ./tools/devloop -cmd mutation-check -mutation-report mutation-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: initial-mutation-test-of-tests
+          path: go-app/mutation-report.json
+          if-no-files-found: warn
+      - name: Enforce bootstrap verdict after preserving evidence
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ steps.mutation.outcome }}" != "success" ]]; then
+            echo "Gremlins execution failed" >&2
+            exit 1
+          fi
+          if [[ "${{ steps.policy.outcome }}" != "success" ]]; then
+            echo "Mutation policy failed; inspect mutation artifact and LIVED/NOT COVERED mutants" >&2
+            exit 1
+          fi
