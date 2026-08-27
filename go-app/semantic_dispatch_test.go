@@ -11,10 +11,10 @@ import (
 
 func TestSemanticDispatcherHandlesHIDV3Stroke(t *testing.T) {
 	app := &App{
-		coreState:     appcore.NewState(),
-		history:       make([]HistoryEntry, 0, 4),
-		maxHistory:    4,
-		currentLayer:  9,
+		coreState:    appcore.NewState(),
+		history:      make([]HistoryEntry, 0, 4),
+		maxHistory:   4,
+		currentLayer: 9,
 	}
 	msg := protocol.Event{
 		Protocol:  3,

@@ -598,57 +598,12 @@ func (a *App) handleMessage(msg protocol.Event) {
 		return
 	}
 
-	if msg.Protocol == 2 {
-		switch msg.Type {
-		case "armed":
-			a.appendHistory(HistoryEntry{Type: "armed", Details: "inputs ready"})
-			return
-		case "language":
-			a.appendHistory(HistoryEntry{Type: "language", Details: strings.ToUpper(msg.Language)})
-			return
-		case "status":
-			a.appendHistory(HistoryEntry{Type: "status", Details: fmt.Sprintf("armed=%v thumbs=0x%X main=0x%X", msg.Armed, msg.ThumbMask, msg.MainMask)})
-			return
-		case "error":
-			errMsg := fmt.Sprintf("Device error: %s (%d)", msg.ErrorCode, msg.ErrorValue)
-			a.mu.Lock()
-			a.errorMsg = errMsg
-			a.mu.Unlock()
-			a.appendHistory(HistoryEntry{Type: "error", Details: errMsg})
-			return
-		case "tap":
-			action, err := a.resolveTap(msg.Action)
-			if err != nil {
-				a.mu.Lock()
-				a.errorMsg = err.Error()
-				a.mu.Unlock()
-				return
-			}
-			if a.actionHandler != nil {
-				a.actionHandler.HandleAction(action)
-			}
-			a.appendHistory(HistoryEntry{Type: "tap", Details: msg.Action})
-			return
-		case "stroke":
-			action, err := a.resolveStroke(msg.Language, msg.Modifiers, msg.Button)
-			if err != nil {
-				a.mu.Lock()
-				a.errorMsg = err.Error()
-				a.mu.Unlock()
-				return
-			}
-			if a.actionHandler != nil {
-				a.actionHandler.HandleAction(action)
-			}
-
-			modeName := textinput.ModeName(msg.Modifiers)
-			details := fmt.Sprintf("%s %s button=%d", strings.ToUpper(msg.Language), modeName, msg.Button)
-			if action != nil && action.Text != "" {
-				details += fmt.Sprintf(" → %s", action.Text)
-			}
-			a.appendHistory(HistoryEntry{Type: "stroke", Buttons: msg.Buttons, Details: details})
+	if msg.Protocol >= 2 {
+		if a.handleSemanticProtocolMessage(msg) {
 			return
 		}
+		log.Printf("Ignoring unsupported modern semantic event protocol=%d type=%q sequence=%d", msg.Protocol, msg.Type, msg.Sequence)
+		return
 	}
 
 	// Legacy protocol-v1 path.
