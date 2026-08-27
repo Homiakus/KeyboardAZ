@@ -1,6 +1,8 @@
 module hapticpad-go-app
 
-go 1.21
+go 1.26.0
+
+toolchain go1.26.7
 
 require (
 	gioui.org v0.5.0
