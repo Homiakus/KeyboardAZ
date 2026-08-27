@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/firmware-hid-v3-routing-migration.yml
       - .github/scripts/firmware_hid_v3_routing_switch.py
+      - .github/scripts/firmware_hid_v3_routing_compile_fix.py
 
 permissions:
   contents: write
@@ -18,12 +19,15 @@ jobs:
         with:
           fetch-depth: 0
       - name: Apply HID v3 realtime routing migration
-        run: python3 .github/scripts/firmware_hid_v3_routing_switch.py
+        run: |
+          python3 .github/scripts/firmware_hid_v3_routing_switch.py
+          python3 .github/scripts/firmware_hid_v3_routing_compile_fix.py
       - name: Verify realtime routing ownership
         shell: bash
         run: |
           grep -F '#include "hid_v3_transport.h"' src/MacroPad.ino
           grep -F 'uint32_t g_realtimeSequence = 0;' src/MacroPad.ino
+          grep -F '#if HAPTICPAD_ENABLE_HID_V3' src/MacroPad.ino
           grep -F 'HapticpadHIDV3::begin()' src/MacroPad.ino
           grep -F 'HapticpadHIDV3::send(report)' src/MacroPad.ino
           grep -F 'HapticpadProtocolV3::EventType::Stroke' src/MacroPad.ino
