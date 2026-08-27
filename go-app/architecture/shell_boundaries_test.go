@@ -187,6 +187,37 @@ func TestConnectionRuntimeAndHandshakeUseProtocolEvents(t *testing.T) {
 	}
 }
 
+func TestHILCoreDoesNotDependOnOSInputBackend(t *testing.T) {
+	for _, relative := range []string{
+		filepath.Join("hilcapture", "dispatch.go"),
+		filepath.Join("hilcapture", "hid_v3.go"),
+		filepath.Join("inputtrace", "trace.go"),
+	} {
+		content := readModuleSource(t, relative)
+		for _, forbidden := range []string{
+			"hapticpad-go-app/handler",
+			"github.com/go-vgo/robotgo",
+			"golang.org/x/sys/windows",
+			"SendInput.Call",
+		} {
+			if strings.Contains(content, forbidden) {
+				t.Errorf("%s regained OS input dependency through %q", relative, forbidden)
+			}
+		}
+	}
+
+	windowsAdapter := readModuleSource(t, filepath.Join("tools", "hid-capture", "sendinput_windows.go"))
+	for _, required := range []string{
+		"//go:build windows",
+		"hapticpad-go-app/handler",
+		"handler.NewHandlerWithOptions",
+	} {
+		if !strings.Contains(windowsAdapter, required) {
+			t.Errorf("Windows HIL adapter lost explicit OS boundary %q", required)
+		}
+	}
+}
+
 func readSource(t *testing.T, name string) string {
 	t.Helper()
 	return readModuleSource(t, name)
