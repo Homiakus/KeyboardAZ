@@ -71,6 +71,7 @@ type Reader struct {
 	errors    chan error
 	done      chan struct{}
 	closeOnce sync.Once
+	health    telemetry.Recorder
 }
 
 // Discover enumerates present HID interfaces and returns only interfaces whose
@@ -215,6 +216,11 @@ func openHIDPath(path string) (windows.Handle, error) {
 // Open selects exactly one HID interface for the durable CDC identity and
 // starts its realtime read loop. Raw HID remains opt-in at composition level.
 func Open(reference device.Identity) (*Reader, error) {
+	return OpenWithRecorder(reference, telemetry.Process())
+}
+
+// OpenWithRecorder opens the HID realtime path with instance-owned telemetry.
+func OpenWithRecorder(reference device.Identity, recorder telemetry.Recorder) (*Reader, error) {
 	candidates, err := Discover()
 	if err != nil {
 		return nil, err
@@ -223,10 +229,14 @@ func Open(reference device.Identity) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return OpenCandidate(candidate)
+	return OpenCandidateWithRecorder(candidate, recorder)
 }
 
 func OpenCandidate(candidate Candidate) (*Reader, error) {
+	return OpenCandidateWithRecorder(candidate, telemetry.Process())
+}
+
+func OpenCandidateWithRecorder(candidate Candidate, recorder telemetry.Recorder) (*Reader, error) {
 	if candidate.Path == "" {
 		return nil, ErrDeviceNotFound
 	}
@@ -239,6 +249,7 @@ func OpenCandidate(candidate Candidate) (*Reader, error) {
 		messages: make(chan protocol.Event, 512),
 		errors:   make(chan error, 16),
 		done:     make(chan struct{}),
+		health:   telemetry.RecorderOrProcess(recorder),
 	}
 	go reader.readLoop()
 	return reader, nil
@@ -246,6 +257,13 @@ func OpenCandidate(candidate Candidate) (*Reader, error) {
 
 func (r *Reader) Messages() <-chan protocol.Event { return r.messages }
 func (r *Reader) Errors() <-chan error            { return r.errors }
+
+func (r *Reader) Health() telemetry.HealthSnapshot {
+	if r == nil || r.health == nil {
+		return telemetry.HealthSnapshot{}
+	}
+	return r.health.Snapshot()
+}
 
 func (r *Reader) Close() error {
 	if r == nil {
@@ -281,24 +299,24 @@ func (r *Reader) readLoop() {
 		}
 		if read != hidInputReportSize {
 			err := fmt.Errorf("Raw HID input report size %d, want %d", read, hidInputReportSize)
-			telemetry.Process().RecordParseError(err)
+			r.health.RecordParseError(err)
 			r.publishError(err)
 			continue
 		}
 		if buffer[0] == 0 {
 			err := errors.New("Raw HID report ID zero is invalid for KeyboardAZ v3")
-			telemetry.Process().RecordParseError(err)
+			r.health.RecordParseError(err)
 			r.publishError(err)
 			continue
 		}
 
 		event, _, err := transport.DecodeV3Event(buffer[1:hidInputReportSize])
 		if err != nil {
-			telemetry.Process().RecordParseError(err)
+			r.health.RecordParseError(err)
 			r.publishError(fmt.Errorf("decode Raw HID v3: %w", err))
 			continue
 		}
-		telemetry.Process().ObserveTransportMessageOn("hid-v3", event.Protocol, event.Sequence, event.Type, event.Firmware)
+		r.health.ObserveTransportMessageOn("hid-v3", event.Protocol, event.Sequence, event.Type, event.Firmware)
 		select {
 		case r.messages <- event:
 		case <-r.done:
