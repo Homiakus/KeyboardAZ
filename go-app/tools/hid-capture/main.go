@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -110,10 +109,6 @@ func failUsage(message string) {
 }
 
 func fatalf(format string, args ...any) {
-	message := fmt.Sprintf(format, args...)
-	if errors.Is(context.Canceled, context.Canceled) && message == "" {
-		return
-	}
-	fmt.Fprintln(os.Stderr, message)
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
 }
