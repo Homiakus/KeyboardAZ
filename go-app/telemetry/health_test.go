@@ -43,6 +43,47 @@ func TestReadyBackwardsJumpStartsNewEpoch(t *testing.T) {
 	}
 }
 
+func TestIndependentTransportStreamsDoNotCreateFalseGaps(t *testing.T) {
+	h := NewHealth()
+
+	h.ObserveTransportMessageOn("cdc-v2", 2, 100, "status", "2.2.0")
+	h.ObserveTransportMessageOn("hid-v3", 3, 1, "stroke", "")
+	h.ObserveTransportMessageOn("cdc-v2", 2, 101, "status", "")
+	h.ObserveTransportMessageOn("hid-v3", 3, 2, "stroke", "")
+
+	s := h.Snapshot()
+	if s.SequenceGaps != 0 || s.SequenceDuplicates != 0 {
+		t.Fatalf("independent streams were cross-compared: %+v", s)
+	}
+	if len(s.TransportStreams) != 2 {
+		t.Fatalf("TransportStreams=%d, want 2", len(s.TransportStreams))
+	}
+	cdc := s.TransportStreams["cdc-v2"]
+	hid := s.TransportStreams["hid-v3"]
+	if cdc.LastSequence != 101 || cdc.RxTotal != 2 || cdc.Protocol != 2 {
+		t.Fatalf("unexpected CDC stream: %+v", cdc)
+	}
+	if hid.LastSequence != 2 || hid.RxTotal != 2 || hid.Protocol != 3 {
+		t.Fatalf("unexpected HID stream: %+v", hid)
+	}
+}
+
+func TestPerStreamGapsRemainVisibleInAggregate(t *testing.T) {
+	h := NewHealth()
+	h.ObserveTransportMessageOn("cdc-v2", 2, 1, "status", "")
+	h.ObserveTransportMessageOn("cdc-v2", 2, 3, "status", "")
+	h.ObserveTransportMessageOn("hid-v3", 3, 10, "stroke", "")
+	h.ObserveTransportMessageOn("hid-v3", 3, 12, "stroke", "")
+
+	s := h.Snapshot()
+	if s.SequenceGaps != 2 {
+		t.Fatalf("aggregate gaps=%d, want 2", s.SequenceGaps)
+	}
+	if s.TransportStreams["cdc-v2"].SequenceGaps != 1 || s.TransportStreams["hid-v3"].SequenceGaps != 1 {
+		t.Fatalf("unexpected per-stream gaps: %+v", s.TransportStreams)
+	}
+}
+
 func TestRealtimeQueueTelemetryUsesBoundedWindow(t *testing.T) {
 	h := NewHealth()
 	h.ObserveRealtimeEnqueue(1)
