@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	domainaction "hapticpad-go-app/action"
-	"hapticpad-go-app/handler"
+	"hapticpad-go-app/inputtrace"
 	"hapticpad-go-app/latencyreport"
 	"hapticpad-go-app/protocol"
 	"hapticpad-go-app/textinput"
@@ -13,7 +13,7 @@ import (
 // TraceActionSink is the narrow application port required by the HIL runner.
 // The resolved action may contain text, but the trace itself remains content-free.
 type TraceActionSink interface {
-	HandleActionWithTrace(*domainaction.Action, handler.InputTrace)
+	HandleActionWithTrace(*domainaction.Action, inputtrace.Trace)
 }
 
 // DispatchHIDV3Event runs one validated HID-v3 semantic event through the same
@@ -59,7 +59,7 @@ func DispatchHIDV3Event(event protocol.Event, resolver *textinput.Resolver, sink
 		return false, fmt.Errorf("HIL T3 requires immediate input action for sequence %d, got %s", event.Sequence, action.Type)
 	}
 
-	trace := handler.InputTrace{Transport: latencyreport.TransportHIDV3, Sequence: event.Sequence}
+	trace := inputtrace.Trace{Transport: latencyreport.TransportHIDV3, Sequence: event.Sequence}
 	if !trace.Valid() {
 		return false, fmt.Errorf("invalid HID-v3 trace for sequence %d", event.Sequence)
 	}
