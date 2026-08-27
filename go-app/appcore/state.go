@@ -116,6 +116,7 @@ func (s *State) SetConnection(state ConnectionState, err error) {
 		s.lastError = ""
 	}
 	if state == Disconnected {
+		s.modifiers = 0
 		s.activeButtons = nil
 		s.activeButtonsMask = 0
 		s.activeThumbMask = 0
@@ -162,6 +163,10 @@ func (s *State) ApplyEvent(event protocol.Event) Decision {
 	case "ready":
 		s.connection = Connected
 		s.lastError = ""
+		s.modifiers = 0
+		s.activeButtons = nil
+		s.activeButtonsMask = 0
+		s.activeThumbMask = 0
 		if event.Firmware != "" {
 			s.firmwareVersion = event.Firmware
 		}
@@ -174,6 +179,11 @@ func (s *State) ApplyEvent(event protocol.Event) Decision {
 		if event.Language != "" {
 			s.language = event.Language
 		}
+		// Language changes are thumb taps, not a held main-key mode. Reset the
+		// last stroke modifier so the read model cannot display a stale mode.
+		s.modifiers = 0
+		s.activeButtons = nil
+		s.activeButtonsMask = 0
 	case "status":
 		s.connection = Connected
 		s.lastError = ""
@@ -201,6 +211,7 @@ func (s *State) ApplyEvent(event protocol.Event) Decision {
 			return Decision{SuppressExecution: true, Captured: selection}
 		}
 	case "tap":
+		s.modifiers = 0
 		s.activeButtons = nil
 		s.activeButtonsMask = 0
 		if s.captureActive {
