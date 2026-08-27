@@ -55,18 +55,36 @@ type Handler struct {
 	keyboard   Keyboard
 	runCommand func(string) error
 	sleep      func(time.Duration)
+	health     telemetry.Recorder
 }
 
-// NewHandler creates a low-latency action handler.
+// NewHandler creates a low-latency action handler using the legacy process
+// recorder. New composition roots should prefer NewHandlerWithRecorder.
 func NewHandler(keymap ActionLookup) *Handler {
-	return newHandlerWithDeps(keymap, newKeyboard(), defaultCommandRunner, time.Sleep)
+	return NewHandlerWithRecorder(keymap, telemetry.Process())
 }
 
+// NewHandlerWithRecorder creates a handler with explicitly owned telemetry.
+func NewHandlerWithRecorder(keymap ActionLookup, recorder telemetry.Recorder) *Handler {
+	return newHandlerWithDepsAndRecorder(keymap, newKeyboard(), defaultCommandRunner, time.Sleep, recorder)
+}
+
+// newHandlerWithDeps remains as a compatibility helper for existing unit tests.
 func newHandlerWithDeps(
 	keymap ActionLookup,
 	keyboard Keyboard,
 	runCommand func(string) error,
 	sleep func(time.Duration),
+) *Handler {
+	return newHandlerWithDepsAndRecorder(keymap, keyboard, runCommand, sleep, telemetry.Process())
+}
+
+func newHandlerWithDepsAndRecorder(
+	keymap ActionLookup,
+	keyboard Keyboard,
+	runCommand func(string) error,
+	sleep func(time.Duration),
+	recorder telemetry.Recorder,
 ) *Handler {
 	if keyboard == nil {
 		keyboard = newKeyboard()
@@ -77,6 +95,7 @@ func newHandlerWithDeps(
 	if sleep == nil {
 		sleep = time.Sleep
 	}
+	recorder = telemetry.RecorderOrProcess(recorder)
 
 	h := &Handler{
 		keymap:          keymap,
@@ -87,6 +106,7 @@ func newHandlerWithDeps(
 		keyboard:        keyboard,
 		runCommand:      runCommand,
 		sleep:           sleep,
+		health:          recorder,
 	}
 
 	h.workers.Add(2)
@@ -95,8 +115,13 @@ func newHandlerWithDeps(
 	return h
 }
 
-// Health returns the process-level privacy-safe input pipeline snapshot.
-func (h *Handler) Health() telemetry.HealthSnapshot { return telemetry.Process().Snapshot() }
+// Health returns this handler's privacy-safe input pipeline snapshot.
+func (h *Handler) Health() telemetry.HealthSnapshot {
+	if h == nil || h.health == nil {
+		return telemetry.HealthSnapshot{}
+	}
+	return h.health.Snapshot()
+}
 
 // startInputWorker owns keyboard injection. User-generated realtime events are
 // always checked before macro-generated steps. A combo is executed atomically
@@ -147,7 +172,7 @@ func (h *Handler) observeRealtimeDispatch(req ActionRequest) {
 	if !req.EnqueuedAt.IsZero() {
 		age = time.Since(req.EnqueuedAt)
 	}
-	telemetry.Process().ObserveRealtimeDispatch(age, len(h.realtimeQueue))
+	h.health.ObserveRealtimeDispatch(age, len(h.realtimeQueue))
 }
 
 func (h *Handler) startBackgroundWorker() {
@@ -211,7 +236,7 @@ func (h *Handler) enqueueRealtime(action domainaction.Action) bool {
 	if !h.enqueue(h.realtimeQueue, action) {
 		return false
 	}
-	telemetry.Process().ObserveRealtimeEnqueue(len(h.realtimeQueue))
+	h.health.ObserveRealtimeEnqueue(len(h.realtimeQueue))
 	return true
 }
 
