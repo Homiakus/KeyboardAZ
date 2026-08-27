@@ -84,6 +84,37 @@ func TestShellDoesNotCacheSemanticInputState(t *testing.T) {
 	}
 }
 
+func TestCompositionRootUsesCanonicalWorkspacePolicy(t *testing.T) {
+	mainContent := readSource(t, "main.go")
+	for _, required := range []string{
+		"paths, startupError := prepareWorkspace()",
+		"return canonicalConfigDir()",
+	} {
+		if !strings.Contains(mainContent, required) {
+			t.Errorf("main.go lost canonical workspace composition through %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"workspace.FromRoot(getConfigDir())",
+		`filepath.Join(home, ".hapticpad")`,
+	} {
+		if strings.Contains(mainContent, forbidden) {
+			t.Errorf("main.go regained legacy workspace ownership through %q", forbidden)
+		}
+	}
+
+	startupContent := readSource(t, "startup_workspace.go")
+	for _, required := range []string{
+		"workspace.Default()",
+		"workspace.LegacyRoot()",
+		"workspacemigrate.MigrateValidated(",
+	} {
+		if !strings.Contains(startupContent, required) {
+			t.Errorf("startup workspace policy lost required behavior %q", required)
+		}
+	}
+}
+
 func TestCompositionRootInjectsConcreteCDCTransport(t *testing.T) {
 	content := readSource(t, "main.go")
 	for _, required := range []string{
