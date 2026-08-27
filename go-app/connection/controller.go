@@ -22,6 +22,7 @@ const defaultHandshakeTimeout = time.Second
 
 type DiscoverFunc func() ([]device.Candidate, error)
 type OpenFunc func(portName string) (Session, error)
+type RealtimeOpenFunc func(identity device.Identity) (EventSource, error)
 
 type ControllerOptions struct {
 	Reference        device.Identity
@@ -29,6 +30,7 @@ type ControllerOptions struct {
 	HandshakeTimeout time.Duration
 	Discover         DiscoverFunc
 	Open             OpenFunc
+	RealtimeOpen     RealtimeOpenFunc // nil keeps the production CDC-v2 realtime path.
 	Now              func() time.Time
 	Manager          *Manager
 }
@@ -54,6 +56,7 @@ type Controller struct {
 	pending          []protocol.Event
 	discover         DiscoverFunc
 	open             OpenFunc
+	realtimeOpen     RealtimeOpenFunc
 	handshakeTimeout time.Duration
 	now              func() time.Time
 }
@@ -98,6 +101,7 @@ func NewControllerWithOptions(options ControllerOptions) *Controller {
 		reference:        options.Reference.Normalized(),
 		discover:         discover,
 		open:             open,
+		realtimeOpen:     options.RealtimeOpen,
 		handshakeTimeout: handshakeTimeout,
 		now:              now,
 	}
@@ -282,8 +286,25 @@ func (c *Controller) openAndHandshake(ctx context.Context, candidate device.Cand
 	if candidate.PortName == "" {
 		return nil, HandshakeResult{}, errors.New("candidate has no port name")
 	}
+
+	// In opt-in HID mode open the realtime interface first so its bounded reader
+	// queue is already collecting v3 input while the CDC identity handshake runs.
+	// This avoids a post-handshake switch window in which a physical stroke could
+	// otherwise arrive before the host starts reading the interrupt endpoint.
+	var realtime EventSource
+	if c.realtimeOpen != nil {
+		var err error
+		realtime, err = c.realtimeOpen(candidate.Identity.Normalized())
+		if err != nil {
+			return nil, HandshakeResult{}, fmt.Errorf("open realtime interface for %s: %w", candidate.PortName, err)
+		}
+	}
+
 	session, err := c.open(candidate.PortName)
 	if err != nil {
+		if realtime != nil {
+			_ = realtime.Close()
+		}
 		return nil, HandshakeResult{}, fmt.Errorf("open %s: %w", candidate.PortName, err)
 	}
 
@@ -298,9 +319,22 @@ func (c *Controller) openAndHandshake(ctx context.Context, candidate device.Cand
 	handshake, err := ProbeV2(probeCtx, session)
 	if err != nil {
 		_ = session.Close()
+		if realtime != nil {
+			_ = realtime.Close()
+		}
 		return nil, HandshakeResult{}, fmt.Errorf("handshake %s: %w", candidate.PortName, err)
 	}
-	return session, handshake, nil
+	if realtime == nil {
+		return session, handshake, nil
+	}
+
+	composite, err := NewCompositeSession(session, realtime)
+	if err != nil {
+		_ = realtime.Close()
+		_ = session.Close()
+		return nil, HandshakeResult{}, fmt.Errorf("compose realtime session for %s: %w", candidate.PortName, err)
+	}
+	return composite, handshake, nil
 }
 
 func (c *Controller) installSession(candidate device.Candidate, session Session, pending []protocol.Event, explicit bool) Session {
