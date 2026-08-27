@@ -3,6 +3,7 @@ package architecture_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -14,11 +15,16 @@ func TestConfiguratorUsesApplicationEditingBoundary(t *testing.T) {
 		"textinput.SetThumbTap(",
 		"textinput.DuplicateProfile(",
 		"textinput.DeleteProfile(",
-		"layoutDraft.ActiveProfile =",
 	} {
 		if strings.Contains(content, forbidden) {
 			t.Errorf("configurator.go bypasses layoutedit application boundary with %q", forbidden)
 		}
+	}
+
+	// Match a plain assignment but not a comparison (==) or other operator.
+	activeProfileAssignment := regexp.MustCompile(`layoutDraft\.ActiveProfile\s*=\s*[^=]`)
+	if activeProfileAssignment.MatchString(content) {
+		t.Error("configurator.go directly mutates layoutDraft.ActiveProfile instead of using layoutedit")
 	}
 }
 
