@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"hapticpad-go-app/telemetry"
 )
 
 func TestReconnectBackoffSequence(t *testing.T) {
@@ -138,5 +140,35 @@ func TestManualLifecycleStates(t *testing.T) {
 	m.MarkDetached()
 	if snap := m.Snapshot(); snap.State != Detached || snap.Recovering {
 		t.Fatalf("unexpected detached snapshot: %+v", snap)
+	}
+}
+
+func TestManagerTelemetryIsInstanceScoped(t *testing.T) {
+	firstHealth := telemetry.NewHealth()
+	secondHealth := telemetry.NewHealth()
+	first := NewManagerWithRecorder(firstHealth)
+	second := NewManagerWithRecorder(secondHealth)
+	now := time.Unix(4000, 0)
+
+	first.MarkLost(now, errors.New("removed"))
+	now = now.Add(retryDelay(0))
+	if _, ok := first.BeginAttempt(now); !ok {
+		t.Fatal("expected first manager recovery attempt")
+	}
+	first.MarkAttemptFailed(now, errors.New("still absent"))
+
+	if got := firstHealth.Snapshot().ReconnectFailures; got != 1 {
+		t.Fatalf("first recorder reconnect failures=%d want 1", got)
+	}
+	if got := secondHealth.Snapshot().ReconnectFailures; got != 0 {
+		t.Fatalf("telemetry leaked to second manager: failures=%d", got)
+	}
+
+	first.MarkReady()
+	if got := firstHealth.Snapshot().Reconnects; got != 1 {
+		t.Fatalf("first recorder reconnect successes=%d want 1", got)
+	}
+	if got := second.HealthSnapshot; got != nil {
+		_ = got
 	}
 }
