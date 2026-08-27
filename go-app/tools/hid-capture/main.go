@@ -7,16 +7,19 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"time"
 
 	"hapticpad-go-app/device"
-	"hapticpad-go-app/handler"
 	"hapticpad-go-app/hidv3"
 	"hapticpad-go-app/hilcapture"
 	"hapticpad-go-app/textinput"
 )
+
+type captureActionSink interface {
+	hilcapture.TraceActionSink
+	Close()
+}
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -53,9 +56,6 @@ func run(args []string) error {
 	if *drainTimeout <= 0 {
 		return fmt.Errorf("-drain-timeout must be > 0")
 	}
-	if *sendInput && runtime.GOOS != "windows" {
-		return fmt.Errorf("-sendinput HIL mode requires Windows; current platform is %s", runtime.GOOS)
-	}
 
 	resolver, layoutSource, err := loadResolver(*layoutPath)
 	if err != nil {
@@ -88,9 +88,12 @@ func run(args []string) error {
 		fmt.Fprintf(os.Stderr, "capture did not complete; diagnostic partial dataset may remain at %s\n", *outputPath)
 	}()
 
-	var inputHandler *handler.Handler
+	var inputHandler captureActionSink
 	if *sendInput {
-		inputHandler = handler.NewHandlerWithOptions(nil, handler.HandlerOptions{SendInputObserver: observer})
+		inputHandler, err = newCaptureActionSink(observer)
+		if err != nil {
+			return err
+		}
 		defer inputHandler.Close()
 		fmt.Fprintf(os.Stderr, "HIL SendInput mode enabled: resolved keyboard input will be injected into the currently focused target window; layout=%s\n", layoutSource)
 	}
