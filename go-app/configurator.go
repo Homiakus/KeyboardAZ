@@ -622,7 +622,10 @@ func (a *App) layoutConfigKeyTile(gtx layout.Context, button int) layout.Dimensi
 		summary = domainaction.Summary(action)
 	}
 	selected := s.selectedThumb == "" && s.selectedButton == button
-	active := a.activeButtonsMask&(1<<uint(button)) != 0
+	active := false
+	if a.coreState != nil {
+		active = a.coreState.Snapshot().ActiveButtonsMask&(1<<uint(button)) != 0
+	}
 	bg := color.NRGBA{R: 43, G: 47, B: 55, A: 255}
 	border := color.NRGBA{R: 63, G: 69, B: 79, A: 255}
 	if selected {

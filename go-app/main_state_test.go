@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"hapticpad-go-app/appcore"
 	"hapticpad-go-app/config"
+	"hapticpad-go-app/protocol"
 	"hapticpad-go-app/textinput"
 )
 
@@ -24,8 +26,7 @@ func TestAppStateSnapshotConcurrency(t *testing.T) {
 		layoutDraft:          textinput.CloneLayout(layoutConfig),
 		maxHistory:           50,
 		history:              make([]HistoryEntry, 0, 50),
-		currentLanguage:      "en",
-		currentMode:          "letters",
+		coreState:            appcore.NewState(),
 		messageProcessorStop: make(chan bool),
 		messageProcessorDone: make(chan bool, 1),
 	}
@@ -56,10 +57,10 @@ func TestAppStateSnapshotConcurrency(t *testing.T) {
 			for j := 0; j < 50; j++ {
 				app.mu.Lock()
 				app.connected = (j%2 == 0)
-				app.currentLanguage = "en"
-				app.activeButtonsMask = uint32(1 << (id % 22))
 				app.errorMsg = fmt.Sprintf("error %d", j)
 				app.mu.Unlock()
+				button := id % 22
+				app.coreState.ApplyEvent(protocol.Event{Protocol: 2, Type: "stroke", Language: "en", Button: button, Buttons: []int{button}, Mask: uint32(1 << button)})
 				time.Sleep(1 * time.Millisecond)
 			}
 		}(i)

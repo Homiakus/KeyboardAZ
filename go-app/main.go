@@ -95,22 +95,14 @@ type App struct {
 	configBtn     widget.Clickable
 
 	// Таблица кнопок
-	buttonTable       widget.List
-	buttonCells       [22]widget.Clickable // 22 основные кнопки
-	activeButtonsMask uint32               // Битовая маска нажатых кнопок
+	buttonTable widget.List
+	buttonCells [22]widget.Clickable // 22 основные кнопки
 
 	// Состояние
-	connected        bool
-	currentLayer     int
-	currentLanguage  string
-	currentMode      string
-	currentModifiers uint8
-	activeThumbMask  uint8
-	protocolVersion  int
-	firmwareVersion  string
-	activeButtons    []int
-	history          []HistoryEntry
-	maxHistory       int
+	connected    bool
+	currentLayer int
+	history      []HistoryEntry
+	maxHistory   int
 
 	// Ошибки
 	errorMsg string
@@ -153,9 +145,8 @@ func (a *App) SnapshotState() AppSnapshot {
 		runtimeConnected = runtimeSnapshot.HasSession && state == connection.Ready
 	}
 
-	var semantic appcore.Snapshot
-	hasSemantic := a.coreState != nil
-	if hasSemantic {
+	semantic := appcore.Snapshot{Language: textinput.LanguageEnglish}
+	if a.coreState != nil {
 		semantic = a.coreState.Snapshot()
 	}
 
@@ -171,38 +162,17 @@ func (a *App) SnapshotState() AppSnapshot {
 	if a.connectionRuntime != nil {
 		connected = runtimeConnected
 	}
-
-	protocolVersion := a.protocolVersion
-	firmwareVersion := a.firmwareVersion
-	currentLanguage := a.currentLanguage
-	currentModifiers := a.currentModifiers
-	activeThumbMask := a.activeThumbMask
-	activeButtonsMask := a.activeButtonsMask
-	activeButtons := append([]int(nil), a.activeButtons...)
-	currentMode := a.currentMode
-
-	// appcore.State is the canonical semantic read model. The legacy
-	// App fields remain temporarily as a protocol-v1 compatibility
-	// fallback and can now be deleted independently.
-	if hasSemantic {
-		protocolVersion = semantic.ProtocolVersion
-		firmwareVersion = semantic.FirmwareVersion
-		currentLanguage = semantic.Language
-		currentModifiers = semantic.Modifiers
-		activeThumbMask = semantic.ActiveThumbMask
-		activeButtonsMask = semantic.ActiveButtonsMask
-		activeButtons = append(activeButtons[:0], semantic.ActiveButtons...)
-		if semantic.ProtocolVersion >= 2 {
-			currentMode = textinput.ModeName(semantic.Modifiers)
-		}
+	currentMode := "letters"
+	if semantic.ProtocolVersion >= 2 {
+		currentMode = textinput.ModeName(semantic.Modifiers)
 	}
 
 	return AppSnapshot{
 		Connected: connected, Reconnecting: reconnecting, ReconnectAttempts: reconnectAttempts,
-		CurrentLayer: a.currentLayer, CurrentLanguage: currentLanguage, CurrentMode: currentMode,
-		CurrentModifiers: currentModifiers, ActiveThumbMask: activeThumbMask,
-		ProtocolVersion: protocolVersion, FirmwareVersion: firmwareVersion,
-		ActiveButtons: activeButtons, ActiveButtonsMask: activeButtonsMask,
+		CurrentLayer: a.currentLayer, CurrentLanguage: semantic.Language, CurrentMode: currentMode,
+		CurrentModifiers: semantic.Modifiers, ActiveThumbMask: semantic.ActiveThumbMask,
+		ProtocolVersion: semantic.ProtocolVersion, FirmwareVersion: semantic.FirmwareVersion,
+		ActiveButtons: append([]int(nil), semantic.ActiveButtons...), ActiveButtonsMask: semantic.ActiveButtonsMask,
 		History: historyCopy, ErrorMsg: a.errorMsg, SerialPort: a.serialPort, PortItems: portItemsCopy,
 	}
 }
@@ -318,8 +288,6 @@ func run(w *app.Window) error {
 		configurator:         NewConfiguratorState(layoutConfig),
 		maxHistory:           50,
 		history:              make([]HistoryEntry, 0, 50),
-		currentLanguage:      "en",
-		currentMode:          "letters",
 		messageProcessorStop: make(chan bool),
 		messageProcessorDone: make(chan bool, 1), // Буферизованный канал для подтверждения
 		captureSelections:    make(chan appcore.CaptureSelection, 8),
@@ -570,9 +538,6 @@ func (a *App) disconnect() {
 	}
 	a.mu.Lock()
 	a.connected = false
-	a.activeButtons = nil
-	a.activeButtonsMask = 0
-	a.activeThumbMask = 0
 	a.errorMsg = ""
 	a.mu.Unlock()
 	if a.coreState != nil {
@@ -627,12 +592,6 @@ func (a *App) handleMessage(msg protocol.Event) {
 	if msg.Type == "ready" {
 		log.Printf("Device ready signal received (protocol=%d firmware=%s)", msg.Protocol, msg.Firmware)
 		a.mu.Lock()
-		if msg.Protocol == 2 {
-			a.protocolVersion = 2
-			a.firmwareVersion = msg.Firmware
-			a.currentLanguage = msg.Language
-			a.currentMode = "letters"
-		}
 		a.connected = true
 		a.errorMsg = ""
 		a.mu.Unlock()
@@ -643,26 +602,14 @@ func (a *App) handleMessage(msg protocol.Event) {
 	}
 
 	if msg.Protocol == 2 {
-		a.mu.Lock()
-		a.protocolVersion = 2
-		a.mu.Unlock()
-
 		switch msg.Type {
 		case "armed":
 			a.appendHistory(HistoryEntry{Type: "armed", Details: "inputs ready"})
 			return
 		case "language":
-			a.mu.Lock()
-			a.currentLanguage = msg.Language
-			a.currentMode = "letters"
-			a.mu.Unlock()
 			a.appendHistory(HistoryEntry{Type: "language", Details: strings.ToUpper(msg.Language)})
 			return
 		case "status":
-			a.mu.Lock()
-			a.currentLanguage = msg.Language
-			a.activeThumbMask = msg.ThumbMask
-			a.mu.Unlock()
 			a.appendHistory(HistoryEntry{Type: "status", Details: fmt.Sprintf("armed=%v thumbs=0x%X main=0x%X", msg.Armed, msg.ThumbMask, msg.MainMask)})
 			return
 		case "error":
@@ -683,10 +630,6 @@ func (a *App) handleMessage(msg protocol.Event) {
 			if a.actionHandler != nil {
 				a.actionHandler.HandleAction(action)
 			}
-			a.mu.Lock()
-			a.activeButtons = nil
-			a.activeButtonsMask = 0
-			a.mu.Unlock()
 			a.appendHistory(HistoryEntry{Type: "tap", Details: msg.Action})
 			return
 		case "stroke":
@@ -702,14 +645,6 @@ func (a *App) handleMessage(msg protocol.Event) {
 			}
 
 			modeName := textinput.ModeName(msg.Modifiers)
-			a.mu.Lock()
-			a.currentLanguage = msg.Language
-			a.currentMode = modeName
-			a.currentModifiers = msg.Modifiers
-			a.activeButtons = msg.Buttons
-			a.activeButtonsMask = msg.Mask
-			a.mu.Unlock()
-
 			details := fmt.Sprintf("%s %s button=%d", strings.ToUpper(msg.Language), modeName, msg.Button)
 			if action != nil && action.Text != "" {
 				details += fmt.Sprintf(" → %s", action.Text)
@@ -725,8 +660,6 @@ func (a *App) handleMessage(msg protocol.Event) {
 	}
 	a.mu.Lock()
 	a.currentLayer = msg.Layer
-	a.activeButtons = msg.Buttons
-	a.activeButtonsMask = msg.Mask
 	a.mu.Unlock()
 	a.appendHistory(HistoryEntry{Layer: msg.Layer, Buttons: msg.Buttons, Type: msg.Type})
 }
