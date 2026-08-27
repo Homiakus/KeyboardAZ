@@ -25,22 +25,15 @@ const (
 	maxMacroDepth           = 8
 )
 
-// ActionRequest is copied into a queue so callers may safely reuse their action.
-// EnqueuedAt is operational timing metadata only; action content is never
-// copied into telemetry.
 type ActionRequest struct {
 	Action     domainaction.Action
 	EnqueuedAt time.Time
 }
 
-// ActionLookup is the minimal port required by the execution layer. Concrete
-// keymap/layout repositories satisfy it without becoming handler dependencies.
 type ActionLookup interface {
 	GetActionByMask(layer int, mask uint32) *domainaction.Action
 }
 
-// Handler separates latency-sensitive keyboard input from commands and macro
-// scheduling. A sleeping macro can no longer delay or drop a typed character.
 type Handler struct {
 	keymap ActionLookup
 
@@ -58,18 +51,14 @@ type Handler struct {
 	health     telemetry.Recorder
 }
 
-// NewHandler creates a low-latency action handler using the legacy process
-// recorder. New composition roots should prefer NewHandlerWithRecorder.
 func NewHandler(keymap ActionLookup) *Handler {
 	return NewHandlerWithRecorder(keymap, telemetry.Process())
 }
 
-// NewHandlerWithRecorder creates a handler with explicitly owned telemetry.
 func NewHandlerWithRecorder(keymap ActionLookup, recorder telemetry.Recorder) *Handler {
-	return newHandlerWithDepsAndRecorder(keymap, newKeyboard(), defaultCommandRunner, time.Sleep, recorder)
+	return newHandlerWithDepsAndRecorder(keymap, nil, defaultCommandRunner, time.Sleep, recorder)
 }
 
-// newHandlerWithDeps remains as a compatibility helper for existing unit tests.
 func newHandlerWithDeps(
 	keymap ActionLookup,
 	keyboard Keyboard,
@@ -86,8 +75,9 @@ func newHandlerWithDepsAndRecorder(
 	sleep func(time.Duration),
 	recorder telemetry.Recorder,
 ) *Handler {
+	recorder = telemetry.RecorderOrProcess(recorder)
 	if keyboard == nil {
-		keyboard = newKeyboard()
+		keyboard = newKeyboardWithRecorder(recorder)
 	}
 	if runCommand == nil {
 		runCommand = defaultCommandRunner
@@ -95,7 +85,6 @@ func newHandlerWithDepsAndRecorder(
 	if sleep == nil {
 		sleep = time.Sleep
 	}
-	recorder = telemetry.RecorderOrProcess(recorder)
 
 	h := &Handler{
 		keymap:          keymap,
@@ -115,7 +104,6 @@ func newHandlerWithDepsAndRecorder(
 	return h
 }
 
-// Health returns this handler's privacy-safe input pipeline snapshot.
 func (h *Handler) Health() telemetry.HealthSnapshot {
 	if h == nil || h.health == nil {
 		return telemetry.HealthSnapshot{}
@@ -123,20 +111,14 @@ func (h *Handler) Health() telemetry.HealthSnapshot {
 	return h.health.Snapshot()
 }
 
-// startInputWorker owns keyboard injection. User-generated realtime events are
-// always checked before macro-generated steps. A combo is executed atomically
-// by this worker, so its modifier sequence cannot be split by another stroke.
 func (h *Handler) startInputWorker() {
 	defer h.workers.Done()
 
-	// SendInput latency is more stable when the injection goroutine does not
-	// migrate between OS threads. This is harmless on non-Windows platforms.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	prepareRealtimeThread()
 
 	for {
-		// Strict priority fast path for physical keyboard events.
 		select {
 		case <-h.closed:
 			return
@@ -154,8 +136,6 @@ func (h *Handler) startInputWorker() {
 			h.observeRealtimeDispatch(req)
 			h.executeInputAction(req.Action)
 		case macroReq := <-h.macroStepQueue:
-			// A physical event may have arrived while select was choosing a
-			// branch. Give it one final priority check before the macro step.
 			select {
 			case realtimeReq := <-h.realtimeQueue:
 				h.observeRealtimeDispatch(realtimeReq)
@@ -189,8 +169,6 @@ func (h *Handler) startBackgroundWorker() {
 			case domainaction.Macro:
 				h.scheduleMacro(req.Action.Macro, 0)
 			default:
-				// Defensive fallback. Background work must never execute keyboard
-				// input directly; route it through the serialized input worker.
 				h.enqueueMacroStep(req.Action)
 			}
 		}
@@ -210,8 +188,6 @@ func (h *Handler) executeInputAction(action domainaction.Action) {
 	}
 }
 
-// Close is idempotent and never closes producer-facing queues, eliminating
-// send-on-closed-channel races during application shutdown.
 func (h *Handler) Close() {
 	h.closeOnce.Do(func() {
 		close(h.closed)
@@ -251,16 +227,11 @@ func (h *Handler) tryEnqueueBackground(action domainaction.Action) bool {
 	case h.backgroundQueue <- ActionRequest{Action: action, EnqueuedAt: time.Now()}:
 		return true
 	default:
-		// Background actions are intentionally shed before they are allowed
-		// to stall the serial message processor and delay later text strokes.
 		log.Printf("background action queue is full; dropping %s", action.Type)
 		return false
 	}
 }
 
-// HandleAction queues an already resolved action. Realtime strokes use a
-// lossless queue: under extreme overload the reader applies backpressure rather
-// than silently deleting typed characters.
 func (h *Handler) HandleAction(action *domainaction.Action) {
 	if action == nil {
 		return
@@ -274,7 +245,6 @@ func (h *Handler) HandleAction(action *domainaction.Action) {
 	h.enqueueRealtime(copied)
 }
 
-// HandleMessage processes a normalized legacy protocol button mask.
 func (h *Handler) HandleMessage(layer int, buttonsMask uint32) {
 	if h.keymap == nil {
 		return
@@ -304,12 +274,10 @@ func (h *Handler) handleCombo(keys []string) {
 
 	modifiers := keys[:len(keys)-1]
 	mainKey := keys[len(keys)-1]
-
 	for _, mod := range modifiers {
 		h.keyboard.KeyToggle(mod, "down")
 	}
 	h.keyboard.KeyTap(mainKey)
-	// Release modifiers in reverse order, matching normal keyboard unwinding.
 	for i := len(modifiers) - 1; i >= 0; i-- {
 		h.keyboard.KeyToggle(modifiers[i], "up")
 	}
@@ -325,9 +293,6 @@ func (h *Handler) handleCommand(cmd string) {
 	}
 }
 
-// scheduleMacro emits short keyboard steps to a low-priority input queue. Its
-// delay and command execution occur on the background worker and therefore do
-// not block physical typing.
 func (h *Handler) scheduleMacro(macro []domainaction.Action, depth int) {
 	if depth > maxMacroDepth {
 		log.Printf("macro nesting exceeds maximum depth %d", maxMacroDepth)
@@ -366,7 +331,6 @@ func defaultCommandRunner(command string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	// Reap the process asynchronously without blocking input or macro scheduling.
 	go func() {
 		if err := cmd.Wait(); err != nil {
 			log.Printf("command exited with error: %v", err)
