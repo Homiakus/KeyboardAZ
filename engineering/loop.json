@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "plan_document": "docs/PARETO_IMPLEMENTATION_PLAN_2026-08-26.md",
+  "progress_document": "docs/PARETO_IMPLEMENTATION_PROGRESS_2026-08-26.md",
+  "edge_space": "engineering/edge-space.json",
+  "max_semantic_repair_attempts": 3,
+  "max_infrastructure_retries": 2,
+  "autofix": {
+    "max_files": 8,
+    "max_changed_lines": 600,
+    "allowed_prefixes": [
+      "go-app/",
+      "src/",
+      "include/",
+      "tests/",
+      "docs/"
+    ],
+    "forbidden_prefixes": [
+      ".github/workflows/",
+      "engineering/",
+      "platformio.ini",
+      "go-app/go.mod",
+      "go-app/go.sum"
+    ],
+    "safe_classes": [
+      "gofmt"
+    ]
+  },
+  "mutation": {
+    "tool": "github.com/go-gremlins/gremlins/cmd/gremlins",
+    "version": "v0.6.0",
+    "minimum_efficacy": 80.0,
+    "minimum_mutant_coverage": 75.0,
+    "critical_minimum_efficacy": 85.0,
+    "critical_minimum_mutant_coverage": 80.0,
+    "critical_prefixes": [
+      "go-app/protocol/",
+      "go-app/transport/",
+      "go-app/connection/",
+      "go-app/device/",
+      "go-app/telemetry/",
+      "go-app/inputtrace/",
+      "go-app/action/",
+      "go-app/textinput/",
+      "go-app/layoutedit/",
+      "go-app/latencyreport/"
+    ]
+  },
+  "gates": {
+    "fast": [
+      {
+        "id": "core-race",
+        "cwd": "go-app",
+        "platforms": ["linux", "windows", "darwin"],
+        "timeout_seconds": 240,
+        "argv": ["go", "test", "-race", "./action", "./controls", "./config", "./serial", "./textinput", "./protocol", "./appcore", "./inputtrace", "./telemetry", "./device", "./connection", "./transport", "./hidv3", "./hilcapture", "./latencyreport", "./layoutedit", "./workspace", "./workspacemigrate", "./architecture", "./tools/devloop"]
+      },
+      {
+        "id": "core-vet",
+        "cwd": "go-app",
+        "platforms": ["linux", "windows", "darwin"],
+        "timeout_seconds": 180,
+        "argv": ["go", "vet", "./action", "./controls", "./config", "./serial", "./textinput", "./protocol", "./appcore", "./inputtrace", "./telemetry", "./device", "./connection", "./transport", "./hidv3", "./hilcapture", "./latencyreport", "./layoutedit", "./workspace", "./workspacemigrate", "./architecture", "./tools/devloop"]
+      }
+    ],
+    "firmware-native": [
+      {
+        "id": "native-firmware-contracts",
+        "cwd": ".",
+        "platforms": ["linux", "darwin"],
+        "timeout_seconds": 180,
+        "argv": ["bash", "./tests/run_native_firmware_tests.sh"]
+      }
+    ],
+    "windows-full": [
+      {
+        "id": "windows-all-tests",
+        "cwd": "go-app",
+        "platforms": ["windows"],
+        "timeout_seconds": 600,
+        "argv": ["go", "test", "./..."]
+      },
+      {
+        "id": "windows-vet",
+        "cwd": "go-app",
+        "platforms": ["windows"],
+        "timeout_seconds": 300,
+        "argv": ["go", "vet", "./..."]
+      }
+    ]
+  },
+  "stages": [
+    {
+      "id": "stage-0-baseline",
+      "plan_heading": "Этап 0 — baseline freeze",
+      "status": "partial",
+      "priority": 0,
+      "depends_on": [],
+      "blocked_by": ["physical-repeatable-HIL-baseline"],
+      "edge_scenarios": ["timing-boundaries", "load-and-jitter"]
+    },
+    {
+      "id": "stage-1-telemetry",
+      "plan_heading": "Этап 1 — health telemetry",
+      "status": "done",
+      "priority": 1,
+      "depends_on": [],
+      "blocked_by": [],
+      "edge_scenarios": ["sequence-epochs", "queue-pressure", "sendinput-failure"]
+    },
+    {
+      "id": "stage-2-identity-reconnect",
+      "plan_heading": "Этап 2 — identity/reconnect",
+      "status": "done",
+      "priority": 2,
+      "depends_on": ["stage-1-telemetry"],
+      "blocked_by": [],
+      "edge_scenarios": ["identity-ambiguity", "reconnect-renumber", "hot-unplug-races"]
+    },
+    {
+      "id": "stage-3-hil",
+      "plan_heading": "Этап 3 — HIL",
+      "status": "blocked",
+      "priority": 3,
+      "depends_on": ["stage-1-telemetry", "stage-2-identity-reconnect"],
+      "blocked_by": ["physical-fixture-and-10k-dataset"],
+      "edge_scenarios": ["load-and-jitter", "hot-unplug-races", "host-action-correlation"]
+    },
+    {
+      "id": "stage-4-protocol-v3",
+      "plan_heading": "Этап 4 — protocol v3 codec",
+      "status": "done",
+      "priority": 4,
+      "depends_on": ["stage-1-telemetry"],
+      "blocked_by": [],
+      "edge_scenarios": ["protocol-malformed", "sequence-epochs", "timestamp-wrap"]
+    },
+    {
+      "id": "stage-5-tinyusb-composite",
+      "plan_heading": "Этап 5 — TinyUSB composite",
+      "status": "partial",
+      "priority": 5,
+      "depends_on": ["stage-4-protocol-v3"],
+      "blocked_by": ["physical-100-reconnect-cycle-gate"],
+      "edge_scenarios": ["transport-routing", "hid-send-failure", "hot-unplug-races"]
+    },
+    {
+      "id": "stage-6-windows-hid-reader",
+      "plan_heading": "Этап 6 — Windows HID reader",
+      "status": "partial",
+      "priority": 6,
+      "depends_on": ["stage-2-identity-reconnect", "stage-4-protocol-v3"],
+      "blocked_by": ["physical-10k-report-gate"],
+      "edge_scenarios": ["identity-ambiguity", "protocol-malformed", "hot-unplug-races", "host-action-correlation"]
+    },
+    {
+      "id": "stage-7-ab-v2-v3",
+      "plan_heading": "Этап 7 — A/B v2 vs v3",
+      "status": "blocked",
+      "priority": 7,
+      "depends_on": ["stage-3-hil", "stage-5-tinyusb-composite", "stage-6-windows-hid-reader"],
+      "blocked_by": ["physical-controlled-cdc-vs-hid-datasets"],
+      "edge_scenarios": ["load-and-jitter", "transport-routing", "host-action-correlation"]
+    },
+    {
+      "id": "stage-8-debounce",
+      "plan_heading": "Этап 8 — eager/defer debounce",
+      "status": "blocked",
+      "priority": 8,
+      "depends_on": ["stage-7-ab-v2-v3"],
+      "blocked_by": ["physical-bounce-dataset-and-100k-cycle-gate"],
+      "edge_scenarios": ["timing-boundaries", "thumb-main-interaction", "bounce-and-repeat", "timestamp-wrap"]
+    },
+    {
+      "id": "stage-9-application-decomposition",
+      "plan_heading": "Этап 9 — application decomposition",
+      "status": "in_progress",
+      "priority": 9,
+      "depends_on": ["stage-1-telemetry", "stage-2-identity-reconnect"],
+      "blocked_by": [],
+      "edge_scenarios": ["queue-pressure", "concurrent-ui-runtime", "shutdown-races", "configuration-transactions"]
+    },
+    {
+      "id": "stage-10-release-hardening",
+      "plan_heading": "Этап 10 — toolchain/release hardening",
+      "status": "in_progress",
+      "priority": 10,
+      "depends_on": ["stage-9-application-decomposition"],
+      "blocked_by": [],
+      "edge_scenarios": ["clean-checkout", "dependency-drift", "artifact-integrity"]
+    },
+    {
+      "id": "stage-11-windows-ux-recovery",
+      "plan_heading": "Этап 11 — Windows UX/recovery",
+      "status": "in_progress",
+      "priority": 11,
+      "depends_on": ["stage-2-identity-reconnect", "stage-9-application-decomposition"],
+      "blocked_by": [],
+      "edge_scenarios": ["workspace-faults", "single-instance-races", "explorer-restart", "configuration-transactions"]
+    }
+  ]
+}
