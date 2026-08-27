@@ -19,6 +19,7 @@ type distributionJSON struct {
 }
 
 type outputJSON struct {
+	Transport            string           `json:"transport"`
 	Samples              int              `json:"samples"`
 	SequenceGaps         uint64           `json:"sequence_gaps"`
 	SequenceDuplicates   uint64           `json:"sequence_duplicates"`
@@ -65,12 +66,12 @@ func main() {
 	}
 	defer file.Close()
 
-	samples, err := latencyreport.ParseCSV(file)
+	dataset, err := latencyreport.ParseDatasetCSV(file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "parse HIL CSV: %v\n", err)
 		os.Exit(2)
 	}
-	summary := latencyreport.Summarize(samples)
+	summary := latencyreport.Summarize(dataset.Samples)
 	gate := latencyreport.EvaluateGate(summary, latencyreport.GateConfig{
 		MinSamples:        *minSamples,
 		RequireHostTiming: *requireHost,
@@ -82,6 +83,7 @@ func main() {
 	})
 
 	output := outputJSON{
+		Transport:            dataset.Transport,
 		Samples:              summary.Samples,
 		SequenceGaps:         summary.SequenceGaps,
 		SequenceDuplicates:   summary.SequenceDuplicates,
