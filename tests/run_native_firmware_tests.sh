@@ -14,3 +14,9 @@ g++ -std=gnu++17 -Wall -Wextra -Werror \
   tests/native/protocol_v3_test.cpp \
   -o .test-build/protocol_v3_test
 .test-build/protocol_v3_test
+
+g++ -std=gnu++17 -Wall -Wextra -Werror \
+  -Itests/native -Iinclude \
+  tests/native/input_debounce_test.cpp \
+  -o .test-build/input_debounce_test
+.test-build/input_debounce_test
