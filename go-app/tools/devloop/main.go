@@ -19,34 +19,34 @@ import (
 )
 
 type loopConfig struct {
-	SchemaVersion              int                    `json:"schema_version"`
-	PlanDocument               string                 `json:"plan_document"`
-	ProgressDocument           string                 `json:"progress_document"`
-	EdgeSpace                  string                 `json:"edge_space"`
-	MaxSemanticRepairAttempts  int                    `json:"max_semantic_repair_attempts"`
-	MaxInfrastructureRetries   int                    `json:"max_infrastructure_retries"`
-	Autofix                    autofixPolicy          `json:"autofix"`
-	Mutation                   mutationPolicy         `json:"mutation"`
-	Gates                      map[string][]gateSpec  `json:"gates"`
-	Stages                     []stageSpec            `json:"stages"`
+	SchemaVersion             int                   `json:"schema_version"`
+	PlanDocument              string                `json:"plan_document"`
+	ProgressDocument          string                `json:"progress_document"`
+	EdgeSpace                 string                `json:"edge_space"`
+	MaxSemanticRepairAttempts int                   `json:"max_semantic_repair_attempts"`
+	MaxInfrastructureRetries  int                   `json:"max_infrastructure_retries"`
+	Autofix                   autofixPolicy         `json:"autofix"`
+	Mutation                  mutationPolicy        `json:"mutation"`
+	Gates                     map[string][]gateSpec `json:"gates"`
+	Stages                    []stageSpec           `json:"stages"`
 }
 
 type autofixPolicy struct {
-	MaxFiles         int      `json:"max_files"`
-	MaxChangedLines  int      `json:"max_changed_lines"`
-	AllowedPrefixes  []string `json:"allowed_prefixes"`
+	MaxFiles          int      `json:"max_files"`
+	MaxChangedLines   int      `json:"max_changed_lines"`
+	AllowedPrefixes   []string `json:"allowed_prefixes"`
 	ForbiddenPrefixes []string `json:"forbidden_prefixes"`
-	SafeClasses      []string `json:"safe_classes"`
+	SafeClasses       []string `json:"safe_classes"`
 }
 
 type mutationPolicy struct {
-	Tool                         string   `json:"tool"`
-	Version                      string   `json:"version"`
-	MinimumEfficacy              float64  `json:"minimum_efficacy"`
-	MinimumMutantCoverage        float64  `json:"minimum_mutant_coverage"`
-	CriticalMinimumEfficacy      float64  `json:"critical_minimum_efficacy"`
-	CriticalMinimumMutantCoverage float64 `json:"critical_minimum_mutant_coverage"`
-	CriticalPrefixes             []string `json:"critical_prefixes"`
+	Tool                          string   `json:"tool"`
+	Version                       string   `json:"version"`
+	MinimumEfficacy               float64  `json:"minimum_efficacy"`
+	MinimumMutantCoverage         float64  `json:"minimum_mutant_coverage"`
+	CriticalMinimumEfficacy       float64  `json:"critical_minimum_efficacy"`
+	CriticalMinimumMutantCoverage float64  `json:"critical_minimum_mutant_coverage"`
+	CriticalPrefixes              []string `json:"critical_prefixes"`
 }
 
 type gateSpec struct {
@@ -104,12 +104,12 @@ type mutationReport struct {
 }
 
 type edgeReport struct {
-	Dimensions          int    `json:"dimensions"`
-	CartesianCases      string `json:"cartesian_cases"`
-	PairwiseTuples      string `json:"pairwise_tuples"`
-	NamedScenarios      int    `json:"named_scenarios"`
-	CriticalScenarios   int    `json:"critical_scenarios"`
-	MaximumStrength     int    `json:"maximum_strength"`
+	Dimensions        int    `json:"dimensions"`
+	CartesianCases    string `json:"cartesian_cases"`
+	PairwiseTuples    string `json:"pairwise_tuples"`
+	NamedScenarios    int    `json:"named_scenarios"`
+	CriticalScenarios int    `json:"critical_scenarios"`
+	MaximumStrength   int    `json:"maximum_strength"`
 }
 
 func main() {

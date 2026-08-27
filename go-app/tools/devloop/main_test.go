@@ -32,7 +32,7 @@ func TestNextStageSkipsPhysicalBlockerAndChoosesLowestPriority(t *testing.T) {
 
 func TestValidateEdgesRejectsUnknownScenarioValue(t *testing.T) {
 	edges := edgeSpace{
-		SchemaVersion: 1,
+		SchemaVersion:  1,
 		CoveragePolicy: coveragePolicy{BaselineStrength: 2, CriticalStrength: 3},
 		Dimensions: []dimensionSpec{
 			{ID: "transport", Values: []string{"cdc", "hid"}},
@@ -55,7 +55,7 @@ func TestSummarizeEdgesCountsCartesianAndPairwiseSpace(t *testing.T) {
 			{ID: "c", Values: []string{"1", "2", "3", "4"}},
 		},
 		CoveragePolicy: coveragePolicy{CriticalStrength: 3},
-		Scenarios: []scenarioSpec{{ID: "s", Strength: 3, Axes: map[string][]string{"a": {"1"}, "b": {"1"}, "c": {"1"}}}},
+		Scenarios:      []scenarioSpec{{ID: "s", Strength: 3, Axes: map[string][]string{"a": {"1"}, "b": {"1"}, "c": {"1"}}}},
 	}
 	report := summarizeEdges(edges)
 	if report.CartesianCases != "24" {
@@ -81,11 +81,11 @@ func TestCheckMutationRejectsMissingExecutionAndSurvivors(t *testing.T) {
 	}
 
 	writeMutationFixture(t, path, mutationReport{
-		TestEfficacy:       99,
+		TestEfficacy:      99,
 		MutationsCoverage: 99,
-		MutantsTotal:       10,
-		MutantsKilled:      9,
-		MutantsLived:       1,
+		MutantsTotal:      10,
+		MutantsKilled:     9,
+		MutantsLived:      1,
 	})
 	if err := checkMutation(path, policy, false); err == nil {
 		t.Fatal("survived mutant must fail controlled test-of-tests gate")
@@ -95,10 +95,10 @@ func TestCheckMutationRejectsMissingExecutionAndSurvivors(t *testing.T) {
 func TestCheckMutationPassesStrongReport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mutation.json")
 	writeMutationFixture(t, path, mutationReport{
-		TestEfficacy:       100,
+		TestEfficacy:      100,
 		MutationsCoverage: 100,
-		MutantsTotal:       12,
-		MutantsKilled:      12,
+		MutantsTotal:      12,
+		MutantsKilled:     12,
 	})
 	policy := mutationPolicy{MinimumEfficacy: 80, MinimumMutantCoverage: 75}
 	if err := checkMutation(path, policy, false); err != nil {
