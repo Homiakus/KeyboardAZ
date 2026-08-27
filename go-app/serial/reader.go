@@ -124,6 +124,7 @@ func (r *Reader) readLoop() {
 	defer close(r.messages)
 	defer close(r.errors)
 
+	health := telemetry.RecorderOrProcess(r.health)
 	for r.scanner.Scan() {
 		select {
 		case <-r.done:
@@ -138,13 +139,13 @@ func (r *Reader) readLoop() {
 
 		msg, err := parseCompactFormat(line)
 		if err != nil {
-			r.health.RecordParseError(err)
+			health.RecordParseError(err)
 			log.Printf("Failed to parse message: %s, error: %v", line, err)
 			continue
 		}
 		if !validateMessage(msg) {
 			err := fmt.Errorf("invalid message protocol=%d type=%q", msg.Protocol, msg.Type)
-			r.health.RecordParseError(err)
+			health.RecordParseError(err)
 			log.Printf("Invalid message: %+v", msg)
 			continue
 		}
@@ -153,7 +154,7 @@ func (r *Reader) readLoop() {
 		if msg.Protocol == 2 {
 			stream = "cdc-v2"
 		}
-		r.health.ObserveTransportMessageOn(stream, msg.Protocol, msg.Sequence, msg.Type, msg.Firmware)
+		health.ObserveTransportMessageOn(stream, msg.Protocol, msg.Sequence, msg.Type, msg.Firmware)
 
 		select {
 		case r.messages <- msg:

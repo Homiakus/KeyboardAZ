@@ -29,6 +29,7 @@ import (
 	"hapticpad-go-app/layoutedit"
 	"hapticpad-go-app/protocol"
 	"hapticpad-go-app/serial"
+	"hapticpad-go-app/telemetry"
 	"hapticpad-go-app/textinput"
 	"hapticpad-go-app/workspace"
 
@@ -247,13 +248,16 @@ func run(w *app.Window) error {
 		}
 		startupError += fmt.Sprintf("Device identity load failed: %v", identityErr)
 	}
+	health := telemetry.NewHealth()
+	manager := connection.NewManagerWithRecorder(health)
 	controller := connection.NewControllerWithOptions(connection.ControllerOptions{
 		Reference: identity,
 		BaudRate:  baudRate,
+		Manager:   manager,
 		Open: func(portName string) (connection.Session, error) {
-			return serial.NewReader(portName, baudRate)
+			return serial.NewReaderWithRecorder(portName, baudRate, health)
 		},
-		RealtimeOpen: realtimeOpenFromEnvironment(),
+		RealtimeOpen: realtimeOpenFromEnvironmentWithRecorder(health),
 	})
 	connectionRuntime := connection.NewRuntime(controller)
 	connectionRuntime.Start()
@@ -273,7 +277,7 @@ func run(w *app.Window) error {
 		layoutEditor:         layoutEditor,
 		workspace:            paths,
 		keymap:               keymap,
-		actionHandler:        handler.NewHandler(keymap),
+		actionHandler:        handler.NewHandlerWithRecorder(keymap, health),
 		resolver:             resolver,
 		layoutConfig:         textinput.CloneLayout(layoutConfig),
 		layoutDraft:          textinput.CloneLayout(layoutConfig),

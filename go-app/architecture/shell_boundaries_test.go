@@ -115,15 +115,37 @@ func TestCompositionRootUsesCanonicalWorkspacePolicy(t *testing.T) {
 	}
 }
 
-func TestCompositionRootInjectsConcreteCDCTransport(t *testing.T) {
+func TestCompositionRootInjectsApplicationTelemetryRecorder(t *testing.T) {
 	content := readSource(t, "main.go")
 	for _, required := range []string{
+		"health := telemetry.NewHealth()",
+		"connection.NewManagerWithRecorder(health)",
 		"connection.NewControllerWithOptions(",
 		"Open: func(portName string) (connection.Session, error)",
-		"return serial.NewReader(portName, baudRate)",
+		"return serial.NewReaderWithRecorder(portName, baudRate, health)",
+		"realtimeOpenFromEnvironmentWithRecorder(health)",
+		"handler.NewHandlerWithRecorder(keymap, health)",
 	} {
 		if !strings.Contains(content, required) {
-			t.Errorf("main.go does not explicitly compose CDC transport through %q", required)
+			t.Errorf("main.go does not compose application telemetry through %q", required)
+		}
+	}
+	if strings.Contains(content, "telemetry.Process()") {
+		t.Error("main.go must own an isolated Health rather than use process-global telemetry")
+	}
+
+	for _, name := range []string{
+		filepath.Join("handler", "keyboard_windows.go"),
+		filepath.Join("hidv3", "source_windows.go"),
+	} {
+		component := readModuleSource(t, name)
+		for _, forbidden := range []string{
+			"telemetry.Process().Record",
+			"telemetry.Process().Observe",
+		} {
+			if strings.Contains(component, forbidden) {
+				t.Errorf("%s bypasses injected telemetry ownership through %q", name, forbidden)
+			}
 		}
 	}
 }
