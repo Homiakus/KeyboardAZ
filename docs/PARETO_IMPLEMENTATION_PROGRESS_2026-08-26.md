@@ -1,108 +1,185 @@
 # KeyboardAZ — прогресс реализации Pareto-плана
 
-Дата: 26 августа 2026
+Обновлено: 27 августа 2026
 
-## Реализовано в первой итерации
+## Статус
+
+Критические P0-этапы observability, stable identity, reconnect lifecycle, protocol-v3 foundation и архитектурного разделения host application реализованы. Текущий production transport остаётся CDC v2; Raw HID v3 ещё не включён до HIL baseline.
+
+## Реализовано
 
 ### P0-1 / P0-4 — runtime telemetry
 
-Добавлен пакет `go-app/telemetry`:
+Пакет `go-app/telemetry` измеряет:
 
-- bounded window на 2048 последних realtime queue latency samples;
-- p50/p95/p99 без сортировки в hot path;
-- transport RX counter;
-- sequence gap / duplicate / reboot epoch tracking;
-- parse error counter;
-- realtime queue depth и high-watermark;
-- maximum queue age;
-- Windows `SendInput` calls/failures;
-- reconnect success/failure counters;
-- privacy invariant: содержимое введённого текста в telemetry не сохраняется.
+- bounded latency window;
+- p50/p95/p99;
+- transport RX;
+- sequence gaps / duplicates / reboot epochs;
+- parse errors;
+- realtime queue depth/high-watermark/max age;
+- SendInput calls/failures;
+- reconnect success/failure.
 
-Интеграция выполнена в:
+Privacy invariant сохранён: содержимое введённого текста не логируется.
 
-- `go-app/serial/reader.go`;
-- `go-app/handler/actions.go`;
-- `go-app/handler/keyboard_windows.go`;
-- `go-app/connection/manager.go`.
+### P0-3 — stable USB identity и безопасный reconnect
 
-### P0-3 — stable USB identity foundation
+Реализованы:
 
-Добавлен пакет `go-app/device`:
+- `device.Identity{VID, PID, SerialNumber, Product}`;
+- detailed USB discovery;
+- persisted stable identity;
+- strict exact reconnect по VID/PID/serial;
+- ambiguous device refusal;
+- COM только как текущий locator;
+- protocol-v2 handshake до перехода в Ready;
+- reconnect FSM `Detached/Discovering/Opening/Handshaking/Ready/Degraded/Reconnecting`;
+- 250 ms first retry;
+- bounded backoff;
+- degraded probing вместо остановки после 30 ошибок;
+- pending handshake events replay без потери raced stroke.
 
-- `Identity{VID, PID, SerialNumber, Product}`;
-- нормализация VID/PID;
-- strict unattended match только по `VID+PID+serial`;
-- VID/PID-only selection допускается только как набор кандидатов для будущего KeyboardAZ protocol handshake;
-- неоднозначный exact match намеренно не выбирается автоматически;
-- discovery через `go.bug.st/serial/enumerator.GetDetailedPortsList()`.
-
-### P0-3 — reconnect FSM foundation
-
-Добавлен `go-app/connection/manager.go`:
-
-- состояния `Detached / Discovering / Opening / Handshaking / Ready / Degraded / Reconnecting`;
-- reconnect policy отделена от GUI и transport backend;
-- первый recovery probe через 250 ms;
-- backoff после ошибок: 500 ms -> 1 s -> 2 s cap;
-- после 30 ошибок переход в `Degraded`, но не окончательная остановка;
-- в `Degraded` продолжается recovery probe каждые 5 s;
-- reconnect success/failure попадают в process health telemetry;
-- состояние и snapshot потокобезопасны.
-
-Следующий шаг P0-3: подключить manager к lifecycle из `main.go`, сохранять identity выбранного устройства и выполнять v2 handshake перед восстановлением подключения.
+GUI legacy reconnect удалён. `connection.Runtime` — единственный владелец live session/recovery loop.
 
 ### P0-2 — protocol v3 foundation
 
-Добавлен `go-app/transport/protocol_v3.go`:
+Host:
 
-- fixed-size 16-byte report;
-- little-endian sequence/timestamp;
-- reserved bytes;
-- строгая validation semantic event types;
-- отсутствие CRC на application layer;
-- codec не зависит от HID backend;
-- benchmark включён в CI.
+- fixed 16-byte report;
+- strict validation;
+- sequence/timestamp;
+- no app-level CRC;
+- zero-allocation encode benchmark.
 
-Добавлена firmware-сторона `include/protocol_v3.h`:
+Firmware:
 
-- тот же exact 16-byte wire format;
-- fixed caller-owned buffer;
-- no heap / no string formatting;
-- transport-independent encoder;
-- native wire-format test `tests/native/protocol_v3_test.cpp`;
-- firmware test runner теперь проверяет и semantic state machine, и protocol v3 codec.
+- exact 16-byte encoder;
+- caller-owned buffer;
+- no heap/string formatting;
+- native byte-for-byte test.
 
-Raw HID backend и RP2040 TinyUSB descriptor пока не включены: codec и observability сначала стабилизируются независимо от transport backend, затем HID будет добавлен behind feature flag с A/B gate против CDC v2.
+Production Raw HID backend пока не включён.
 
-## CI gates
+### Architecture — canonical protocol event
 
-`.github/workflows/quality.yml` расширен:
+`protocol.Event` теперь canonical application message.
 
-- race tests для telemetry/device/connection/transport;
-- Windows race tests для telemetry/handler/connection/transport;
-- `go vet` новых пакетов;
-- protocol v3 benchmark;
-- форматный gate критических файлов;
-- native firmware simulation сохранена и расширена protocol v3 wire-format test.
+- CDC parser создаёт event напрямую;
+- `serial.ButtonMessage` — только compatibility alias;
+- `connection.Session`, handshake, runtime и pending replay работают через `protocol.Event`;
+- дополнительной adapter goroutine/queue нет;
+- production `connection` не импортирует `serial`;
+- concrete CDC opener инжектируется в composition root через `ControllerOptions.Open`.
 
-Первая telemetry/device/transport итерация прошла полностью зелёный CI на Linux и Windows, включая `-race`, `go vet`, desktop build и native firmware simulation. Новые connection/v3-firmware изменения проходят теми же gates.
+### Architecture — application state
+
+Добавлен `appcore.State`:
+
+- transport/UI-independent semantic state;
+- thread-safe snapshot;
+- connection state projection;
+- one-shot physical capture;
+- captured input возвращает `SuppressExecution`, поэтому настройка не запускает назначенное действие.
+
+Полная миграция dashboard read model на `appcore.Snapshot` ещё впереди: часть presentation state пока дублируется в `App`.
+
+### Architecture / UX — layoutedit application layer
+
+`layoutedit.Session` стал write boundary для configurator:
+
+- atomic validated mutations;
+- undo/redo;
+- commit/revert;
+- binding/thumb editing;
+- reset binding;
+- profile CRUD;
+- copy/paste binding;
+- bulk mode copy;
+- undoable import replacement;
+- diagnostics;
+- action preset search;
+- import preview.
+
+Gio configurator больше не вызывает direct `textinput.SetBinding/SetThumbTap/DuplicateProfile/DeleteProfile`.
+
+### Configurator UX
+
+Реализованы:
+
+- responsive wide/compact layout;
+- capture физической кнопки для настройки;
+- Undo / Redo;
+- Copy / Paste;
+- searchable presets;
+- diagnostics missing/duplicate/exec;
+- preview + confirm/cancel импорта;
+- дополнительное подтверждение test для command/macro;
+- live apply с undoable session;
+- advanced raw editor сохранён для power users.
+
+### Workspace
+
+Добавлен единый `workspace.Paths` для:
+
+- layout;
+- legacy keymap;
+- device identity;
+- exports;
+- drafts.
+
+Пока root сохраняет обратную совместимость с `%USERPROFILE%\.hapticpad`.
+
+### Architecture fitness tests
+
+CI фиксирует dependency direction и запрещает регрессии:
+
+- lower layers -> Gio/higher layers;
+- `connection -> serial`;
+- CDC-specific message type в runtime/handshake;
+- reconnect policy в `main`;
+- direct layout mutations в configurator.
+
+Composition root, наоборот, обязан явно инжектировать concrete CDC adapter.
+
+## Проверки
+
+Постепенные миграции проверялись до push на Windows:
+
+- `go test ./...`;
+- `go vet ./...`;
+- actual `KeyboardAZ.exe` build.
+
+Обычный quality workflow дополнительно содержит:
+
+- Linux race tests;
+- Windows race tests;
+- architecture fitness tests;
+- resolver/protocol benchmarks;
+- native firmware state-machine + protocol-v3 tests.
 
 ## Что намеренно ещё не менялось
 
-- debounce не снижался;
-- Raw HID не назначен transport по умолчанию;
-- semantic state machine firmware не переписана;
-- новый `connection.Manager` ещё не заменил legacy reconnect fields в GUI;
-- текущий CDC v2 остаётся рабочим production path.
+- debounce timings не снижались без HIL;
+- CDC v2 остаётся production transport;
+- Raw HID v3 descriptor/backend не включены;
+- firmware semantic state machine ещё не разделена на input/semantic/protocol/transport modules;
+- storage ещё не мигрирован в `%LOCALAPPDATA%`;
+- `config.Action` ещё не вынесен в отдельный domain package;
+- `textinput/config.go` ещё совмещает model/repository/defaults/profile/compiler;
+- process telemetry singleton ещё не заменён injected `HealthSink`;
+- часть semantic presentation state ещё дублируется между `App` и `appcore`;
+- Go/Gio/toolchain modernization ещё не выполнена.
 
-Это сохраняет обратимость первой итерации: observability и новые abstractions добавляются без изменения поведения физического ввода.
+## Следующий Pareto-этап
 
-## Следующий атомарный этап
+1. Зафиксировать HIL baseline на реальном устройстве: 10k+ strokes, gaps/duplicates, reconnect, RX→SendInput p95/p99.
+2. Перевести dashboard/handler dispatch на `protocol.Event`/`appcore.Snapshot` напрямую и удалить оставшееся duplicated semantic state в `App`.
+3. Реализовать Raw HID v3 adapter behind feature flag при сохранении CDC control/fallback.
+4. Провести A/B HIL CDC v2 vs HID v3 и выбирать default только по измеренному выигрышу.
+5. После baseline исследовать eager-press/defer-release debounce, не раньше.
+6. Выделить `action` domain с compatibility aliases, затем разделить layout model/repository/compiler.
+7. Добавить Quick Configure, переход из diagnostics к конфликту и profile templates.
+8. Выполнить безопасную миграцию workspace в `%LOCALAPPDATA%`.
 
-1. Интегрировать `connection.Manager` в `main.go` и удалить hard stop после 30 reconnect attempts.
-2. Хранить `device.Identity` выбранного KeyboardAZ и использовать COM name только как текущий locator.
-3. Добавить protocol-v2 handshake probe для VID/PID-only кандидатов.
-4. Добавить persistent device identity вместе с будущей миграцией `%LOCALAPPDATA%`.
-5. Добавить HIL fixture/spec для 10k strokes и сравнения CDC v2 против будущего HID v3.
-6. После baseline HIL реализовать Raw HID backend behind feature flag.
+См. актуальный архитектурный аудит: `docs/MODULARITY_AND_CONFIGURABILITY_AUDIT_2026-08-27.md`.
