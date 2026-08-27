@@ -4,9 +4,9 @@
 
 ## Статус
 
-Критические P0-этапы observability, stable USB identity, reconnect lifecycle, protocol-v3 foundation и архитектурного разделения host application реализованы. Toolchain и GUI stack модернизированы, firmware build воспроизводим и реально собирается в CI.
+Критические P0-этапы observability, stable USB identity, reconnect lifecycle, protocol-v3 foundation, Raw HID candidate, host application boundaries и исполняемая HIL-инфраструктура реализованы. Toolchain и GUI stack модернизированы, firmware build воспроизводим и реально собирается в CI.
 
-**Production default остаётся CDC v2.** Экспериментальный Raw HID v3 path реализован end-to-end: RP2040 firmware candidate, native Windows reader, canonical v3→`protocol.Event`, composite HID-realtime + CDC-control session и explicit host opt-in. Переключение default и изменение debounce запрещены до физического A/B HIL.
+**Production default остаётся CDC v2.** Экспериментальный Raw HID v3 path реализован end-to-end: RP2040 firmware candidate, native Windows reader, canonical v3→`protocol.Event`, composite HID-realtime + CDC-control session, modern semantic dispatch и explicit host opt-in. Переключение default и изменение debounce запрещены до физического A/B HIL.
 
 ## Реализовано
 
@@ -75,9 +75,19 @@ Windows host:
 - opt-in через `KEYBOARDAZ_REALTIME_TRANSPORT=hid-v3`;
 - silent fallback запрещён.
 
-### HIL — transport-aware A/B infrastructure
+#### P0 semantic dispatch defect закрыт
 
-Инфраструктура для сравнения CDC-v2 и HID-v3 уже реализована.
+В ходе HIL wiring найден критический дефект: validated protocol-v3 `stroke/tap/language` доходил до GUI, но application action dispatch был ограничен `Protocol == 2`, поэтому v3 мог проваливаться в legacy-v1 ветку.
+
+Исправлено:
+
+- protocols `>=2` используют общий modern semantic dispatcher;
+- `stroke/tap/language/status/error/armed` больше не привязаны к transport version;
+- неизвестный modern semantic event fail-closed и не попадает в v1 handler;
+- CDC-v2 control-specific `ready → status` остаётся transport-specific там, где это действительно необходимо;
+- regression tests фиксируют v3 application semantics.
+
+### HIL — transport-aware A/B infrastructure
 
 `latencyreport.Dataset` поддерживает явную transport metadata:
 
@@ -95,7 +105,41 @@ Windows host:
 - HID p95 должен быть минимум на 20% лучше;
 - p99 не должен регрессировать.
 
-Остался именно физический сбор сопоставимых datasets на устройстве; абсолютный E2E budget намеренно не выдумывается до baseline.
+### HIL — реальный Raw HID T1/T2/T3 host pipeline
+
+Инструментальный путь доведён до фактической Win32 границы, без синтетических timestamp предположений.
+
+Реализовано:
+
+- `hidv3.Observation` сохраняет полный validated `ReportV3` и host receive time;
+- T1 остаётся raw `uint32 micros()` RP2040 и не вычитается из host clock;
+- T2 фиксируется сразу после возврата Windows `ReadFile`;
+- T3 фиксируется непосредственно перед **первым фактическим `SendInput`** для traced realtime action;
+- T2/T3 сериализуются одним process-monotonic domain через `time.Sub(sharedEpoch)`, а не Unix wall time;
+- корреляция выполняется только по privacy-safe `(transport, sequence)`;
+- typed text, key names и resolved Unicode в trace отсутствуют;
+- для combo один physical event даёт один T3 — первый Win32 injection;
+- unmatched/duplicate/late T3 переводит capture в sticky fail-closed error;
+- source-side sample limit не позволяет buffered HID reader создать N+1 строку;
+- CSV пишется только после correlation, без post-hoc эвристики.
+
+Host timing coverage теперь семантически корректен:
+
+- `stroke/tap` обязаны иметь T3;
+- state-only `language` остаётся в sequence-integrity series, но имеет `T3=0`;
+- JSON отдельно выводит `samples`, `host_timing_expected`, `host_rx_to_sendinput.count`;
+- `-require-host-timing=true` требует 100% coverage только actionable events.
+
+Standalone `go-app/tools/hid-capture` имеет два режима:
+
+1. default capture-only — T1/T2 + sequence integrity, без ввода клавиш;
+2. explicit `-sendinput` — Windows-only resolver → realtime queue → actual SendInput T3.
+
+`-sendinput` намеренно opt-in, потому что реально вводит разрешённые события в текущее активное Windows-окно. В полном режиме runner ждёт `SendInputObserved == HostTimingExpected`, требует `SendInputFailures == 0`, затем flush/sync dataset.
+
+HIL core не зависит от OS handler: content-free trace contract вынесен в zero-dependency `go-app/inputtrace`, а Windows handler подключается к CLI только через build-tagged adapter. Это позволяет Linux/Go 1.27 race/vet проверять HIL correlation без robotgo/X11 dependency.
+
+**Важно:** tooling и host timing path реализованы и тестируются в CI, но физические 10k CDC-v2/HID-v3 datasets в репозитории ещё не получены. Нельзя подменять их CI/mock измерениями.
 
 ### Architecture — canonical protocol event
 
@@ -109,18 +153,18 @@ Windows host:
 
 ### Architecture — appcore является semantic authority
 
-`appcore.State` теперь единственный источник protocol/firmware/language/modifier/button semantic state.
+`appcore.State` — единственный источник protocol/firmware/language/modifier/button semantic state.
 
 Завершено:
 
 - dashboard `SnapshotState()` читает semantic state из `appcore.Snapshot`;
 - configurator active-key indication читает `appcore`;
-- дубли `protocolVersion`, `firmwareVersion`, `currentLanguage`, `currentMode`, `currentModifiers`, `activeThumbMask`, `activeButtonsMask`, `activeButtons` физически удалены из `App`;
+- дубли `protocolVersion`, `firmwareVersion`, `currentLanguage`, `currentMode`, `currentModifiers`, `activeThumbMask`, `activeButtonsMask`, `activeButtons` удалены из `App`;
 - reconnect/disconnect/capture обновляют canonical state;
 - one-shot capture подавляет execution назначенного действия;
 - permanent architecture fitness test запрещает вернуть semantic cache в GUI shell.
 
-`App` хранит только presentation/lifecycle state, который действительно относится к shell: history, selected port, errors и legacy-v1 layer.
+`App` хранит только presentation/lifecycle state, который относится к shell: history, selected port, errors и legacy-v1 layer.
 
 ### Architecture — action domain
 
@@ -201,13 +245,16 @@ Permanent `quality` workflow включает:
 - Linux Go 1.26 race/vet;
 - Go 1.27 race/vet;
 - Windows tests/race/vet;
+- explicit zero-dependency `inputtrace` gate;
 - `govulncheck@v1.7.0`;
-- resolver/protocol benchmarks;
+- resolver/protocol/HID decoder benchmarks;
 - architecture fitness tests;
 - telemetry recorder isolation tests;
+- HIL correlation/coverage/orchestration tests;
 - native firmware tests;
 - реальные PlatformIO builds для `pico` и `pico-hid-v3`;
-- explicit workspace/workspacemigrate gates.
+- explicit workspace/workspacemigrate gates;
+- Windows build `KeyboardAZ-hid-capture.exe` alongside desktop executable.
 
 Firmware toolchain pinned:
 
@@ -218,7 +265,8 @@ Firmware toolchain pinned:
 
 ## Что намеренно ещё не менялось / реальный остаточный долг
 
-- physical CDC-v2 vs HID-v3 HIL ещё не выполнен;
+- физический CDC-v2 vs HID-v3 HIL ещё не выполнен;
+- T0/T4 fixture bridge для абсолютного E2E ещё требует реальной оснастки/target ACK;
 - CDC v2 поэтому остаётся production default;
 - debounce timings не снижались без измерений;
 - firmware semantic state machine ещё можно дополнительно разделить на input/semantic/protocol/transport modules;
@@ -227,11 +275,12 @@ Firmware toolchain pinned:
 
 ## Следующий Pareto-этап
 
-1. Собрать физический CDC-v2 baseline 10k+ strokes с fixture E2E timestamps.
-2. Собрать сопоставимый HID-v3 dataset 10k+ strokes на том же устройстве/host/load profile.
-3. Прогнать `tools/latency-compare`; делать HID default только при zero correctness regressions, ≥20% p95 improvement и без p99 regression.
-4. После transport baseline исследовать eager-press/defer-release debounce для main keys; thumb/modifier оставить conservative до отдельного 100k-cycle stress/HIL.
-5. Параллельно разделить firmware semantic state machine на input acquisition / debounce / semantic engine / protocol encoding / transport adapters, не меняя текущую измеренную семантику.
-6. После firmware split добавить per-stage native tests и compile-time contracts, чтобы дальнейшая оптимизация latency не размывала границы.
+1. На реальном устройстве выполнить HID capture-only 10k и подтвердить zero sequence loss/duplicate/out-of-order.
+2. Выполнить HID `-sendinput` 10k в контролируемый Windows test target; подтвердить 100% actionable T3 coverage, `SendInputFailures=0` и host p95/p99.
+3. Собрать физический CDC-v2 baseline и HID-v3 candidate с одинаковым fixture T0/T4, hardware, debounce и load profile.
+4. Прогнать `tools/latency-compare`; делать HID default только при zero correctness regressions, ≥20% fixture-E2E p95 improvement и без p99 regression.
+5. После transport baseline исследовать eager-press/defer-release debounce для main keys; thumb/modifier оставить conservative до отдельного 100k-cycle stress/HIL.
+6. Параллельно разделить firmware semantic state machine на input acquisition / debounce / semantic engine / protocol encoding / transport adapters, не меняя текущую измеренную семантику.
+7. После firmware split добавить per-stage native tests и compile-time contracts, чтобы дальнейшая оптимизация latency не размывала границы.
 
-См. также `docs/PARETO_IMPLEMENTATION_PLAN_2026-08-26.md` и актуальный `docs/MODULARITY_AND_CONFIGURABILITY_AUDIT_2026-08-27.md`.
+См. также `docs/PARETO_IMPLEMENTATION_PLAN_2026-08-26.md`, `tests/hil/README.md`, `tests/hil/latency_protocol.md` и `docs/MODULARITY_AND_CONFIGURABILITY_AUDIT_2026-08-27.md`.
