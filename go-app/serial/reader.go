@@ -15,42 +15,23 @@ import (
 	"strings"
 	"sync"
 
+	"hapticpad-go-app/protocol"
 	"hapticpad-go-app/telemetry"
 
 	gserial "go.bug.st/serial"
 )
 
-// ButtonMessage represents both the legacy layer protocol and semantic v2
-// events. Legacy fields remain populated for backward compatibility.
-type ButtonMessage struct {
-	Protocol int
-	Type     string // v1: press/combo/ready; v2: stroke/tap/language/ready/armed/status/error
-
-	// Legacy protocol fields.
-	Layer   int
-	Buttons []int
-	Mask    uint32
-
-	// Protocol-v2 fields.
-	Sequence   uint32
-	Firmware   string
-	Language   string
-	Modifiers  uint8
-	Button     int
-	Action     string
-	ErrorCode  string
-	ErrorValue uint32
-	Armed      bool
-	ThumbMask  uint8
-	MainMask   uint32
-}
+// ButtonMessage is kept as a source-compatible name while protocol.Event is
+// the canonical transport-neutral semantic message. Because this is an alias,
+// CDC parsing adds no adapter goroutine, queue or allocation on the hot path.
+type ButtonMessage = protocol.Event
 
 // Reader обрабатывает чтение и запись в Serial порт.
 type Reader struct {
 	mu        sync.Mutex
 	port      gserial.Port
 	scanner   *bufio.Scanner
-	messages  chan ButtonMessage
+	messages  chan protocol.Event
 	errors    chan error
 	done      chan bool
 	closeOnce sync.Once
@@ -76,7 +57,7 @@ func NewReader(portName string, baudRate int) (*Reader, error) {
 	reader := &Reader{
 		port:     port,
 		scanner:  scanner,
-		messages: make(chan ButtonMessage, 512),
+		messages: make(chan protocol.Event, 512),
 		errors:   make(chan error, 16),
 		done:     make(chan bool),
 	}
@@ -85,8 +66,8 @@ func NewReader(portName string, baudRate int) (*Reader, error) {
 	return reader, nil
 }
 
-func (r *Reader) Messages() <-chan ButtonMessage { return r.messages }
-func (r *Reader) Errors() <-chan error           { return r.errors }
+func (r *Reader) Messages() <-chan protocol.Event { return r.messages }
+func (r *Reader) Errors() <-chan error            { return r.errors }
 
 // Health returns a privacy-safe process-level snapshot. It is intentionally
 // independent from GUI state so diagnostics continue to work while the window
