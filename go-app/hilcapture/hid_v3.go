@@ -1,6 +1,7 @@
 package hilcapture
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -11,12 +12,15 @@ import (
 	"hapticpad-go-app/transport"
 )
 
+var ErrCaptureLimitReached = errors.New("HID v3 HIL capture limit reached")
+
 // Stats describes only capture mechanics; it never contains typed content.
 type Stats struct {
-	Captured          int
-	SendInputObserved int
-	SendInputFailures int
-	Flushed           int
+	Captured           int
+	HostTimingExpected int
+	SendInputObserved  int
+	SendInputFailures  int
+	Flushed            int
 }
 
 // HIDV3CSVObserver correlates Raw HID T1/T2 metadata and the first actual
@@ -28,19 +32,36 @@ type HIDV3CSVObserver struct {
 	writer  *latencyreport.DatasetWriter
 	samples []latencyreport.Sample
 	index   map[uint32]int
+	limit   int
 	flushed int
 	err     error
 	stats   Stats
 }
 
 func NewHIDV3CSVObserver(output io.Writer) (*HIDV3CSVObserver, error) {
+	return NewHIDV3CSVObserverWithLimit(output, 0)
+}
+
+// NewHIDV3CSVObserverWithLimit creates a lossless recorder with an optional
+// hard report limit. A positive limit is enforced inside the HID callback so a
+// buffered reader cannot race past the requested HIL sample count.
+func NewHIDV3CSVObserverWithLimit(output io.Writer, limit int) (*HIDV3CSVObserver, error) {
+	if limit < 0 {
+		return nil, fmt.Errorf("HID v3 HIL capture limit must be >= 0")
+	}
 	writer, err := latencyreport.NewDatasetWriter(output, latencyreport.TransportHIDV3)
 	if err != nil {
 		return nil, err
 	}
+	capacity := 1024
+	if limit > 0 && limit < capacity {
+		capacity = limit
+	}
 	return &HIDV3CSVObserver{
-		writer: writer,
-		index:  make(map[uint32]int, 1024),
+		writer:  writer,
+		index:   make(map[uint32]int, capacity),
+		samples: make([]latencyreport.Sample, 0, capacity),
+		limit:   limit,
 	}, nil
 }
 
@@ -70,6 +91,9 @@ func (o *HIDV3CSVObserver) ObserveHIDV3(observation hidv3.Observation) error {
 	if o.err != nil {
 		return o.err
 	}
+	if o.limit > 0 && len(o.samples) >= o.limit {
+		return ErrCaptureLimitReached
+	}
 	if _, exists := o.index[sample.Sequence]; exists {
 		err := fmt.Errorf("duplicate HID v3 sequence %d in HIL capture", sample.Sequence)
 		o.err = err
@@ -78,6 +102,9 @@ func (o *HIDV3CSVObserver) ObserveHIDV3(observation hidv3.Observation) error {
 	o.index[sample.Sequence] = len(o.samples)
 	o.samples = append(o.samples, sample)
 	o.stats.Captured++
+	if latencyreport.ExpectsHostDispatch(sample.EventType) {
+		o.stats.HostTimingExpected++
+	}
 	return nil
 }
 
