@@ -34,8 +34,8 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
-      - run: go test -race ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
-      - run: go vet ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
+      - run: go test -race ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
+      - run: go vet ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
       - run: go test -bench=. -benchmem ./textinput ./transport
 
   go-1-27-compat:
@@ -56,8 +56,8 @@ jobs:
         run: |
           go version | grep 'go1.27.0'
           test "$(go env GOTOOLCHAIN)" = "local"
-      - run: go test -race ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
-      - run: go vet ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
+      - run: go test -race ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
+      - run: go vet ./config ./serial ./textinput ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
 
   windows-desktop:
     runs-on: windows-latest
@@ -75,8 +75,8 @@ jobs:
         run: |
           go version
           go env GOTOOLCHAIN
-      - run: go test ./config ./serial ./textinput ./handler ./protocol ./appcore ./telemetry ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
-      - run: go test -race ./protocol ./appcore ./telemetry ./handler ./device ./connection ./transport ./latencyreport ./layoutedit ./workspace ./architecture
+      - run: go test ./config ./serial ./textinput ./handler ./protocol ./appcore ./telemetry ./device ./connection ./transport ./hidv3 ./latencyreport ./layoutedit ./workspace ./architecture ./tools/latency
+      - run: go test -race ./protocol ./appcore ./telemetry ./handler ./device ./connection ./transport ./hidv3 ./latencyreport ./layoutedit ./workspace ./architecture
       - run: go test .
       - run: go vet ./...
       - name: Vulnerability scan
@@ -100,19 +100,31 @@ jobs:
         shell: bash
         run: |
           grep -Fx 'platform = https://github.com/maxgerhardt/platform-raspberrypi.git#9c167c6b8aac4f4cfa6d55a0c4e5b848795150c0' platformio.ini
+          grep -F '[env:pico-hid-v3]' platformio.ini
       - name: Install pinned PlatformIO Core
         shell: bash
         run: |
           python3 -m pip install --disable-pip-version-check 'platformio==6.1.19'
           pio --version | grep '6.1.19'
-      - name: Build RP2040 firmware
+      - name: Build production CDC firmware
         shell: bash
         run: pio run -e pico
-      - name: Verify firmware output and size budget
+      - name: Verify production firmware output and size budget
         shell: bash
         run: |
           test -s .pio/build/pico/firmware.uf2
           bytes="$(stat --printf='%s' .pio/build/pico/firmware.uf2)"
           test "$bytes" -le 150000
-          echo "firmware.uf2 bytes=$bytes"
+          echo "production firmware.uf2 bytes=$bytes"
           sha256sum .pio/build/pico/firmware.uf2
+      - name: Build Raw HID v3 candidate firmware
+        shell: bash
+        run: pio run -e pico-hid-v3
+      - name: Verify Raw HID v3 candidate output and size budget
+        shell: bash
+        run: |
+          test -s .pio/build/pico-hid-v3/firmware.uf2
+          bytes="$(stat --printf='%s' .pio/build/pico-hid-v3/firmware.uf2)"
+          test "$bytes" -le 180000
+          echo "hid-v3 firmware.uf2 bytes=$bytes"
+          sha256sum .pio/build/pico-hid-v3/firmware.uf2
