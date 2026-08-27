@@ -25,8 +25,8 @@ func TestParseCSVAndSummarize(t *testing.T) {
 	}
 
 	summary := Summarize(samples)
-	if summary.Samples != 5 {
-		t.Fatalf("unexpected summary sample count %d", summary.Samples)
+	if summary.Samples != 5 || summary.HostTimingExpected != 5 {
+		t.Fatalf("unexpected summary coverage: %+v", summary)
 	}
 	if summary.SequenceGaps != 1 {
 		t.Fatalf("unexpected sequence gaps %d", summary.SequenceGaps)
@@ -58,9 +58,12 @@ func TestSummarizeHandlesSequenceWrapWithoutFalseGap(t *testing.T) {
 
 func TestSummarizeSkipsMissingTimingStages(t *testing.T) {
 	summary := Summarize([]Sample{
-		{Sequence: 1, T2HostRxNS: 100, T3SendInputNS: 150},
-		{Sequence: 2},
+		{Sequence: 1, EventType: "stroke", T2HostRxNS: 100, T3SendInputNS: 150},
+		{Sequence: 2, EventType: "stroke"},
 	})
+	if summary.HostTimingExpected != 2 {
+		t.Fatalf("unexpected expected host timing count %d", summary.HostTimingExpected)
+	}
 	if summary.HostDispatch.Count != 1 || summary.HostDispatch.P50 != 50*time.Nanosecond {
 		t.Fatalf("unexpected host timing summary %+v", summary.HostDispatch)
 	}
@@ -69,9 +72,37 @@ func TestSummarizeSkipsMissingTimingStages(t *testing.T) {
 	}
 }
 
+func TestSummarizeExcludesLanguageFromHostTimingCoverage(t *testing.T) {
+	summary := Summarize([]Sample{
+		{Sequence: 1, EventType: "stroke", T2HostRxNS: 100, T3SendInputNS: 150},
+		{Sequence: 2, EventType: "language", T2HostRxNS: 200},
+		{Sequence: 3, EventType: "tap", T2HostRxNS: 300, T3SendInputNS: 375},
+	})
+	if summary.Samples != 3 || summary.HostTimingExpected != 2 || summary.HostDispatch.Count != 2 {
+		t.Fatalf("language event distorted host coverage: %+v", summary)
+	}
+	result := EvaluateGate(summary, GateConfig{RequireHostTiming: true})
+	if !result.Passed {
+		t.Fatalf("state-only event caused false host coverage failure: %+v", result)
+	}
+}
+
+func TestExpectsHostDispatchClassifiesSemanticEvents(t *testing.T) {
+	for _, eventType := range []string{"stroke", "tap", "press", "combo", "repeat", " STROKE "} {
+		if !ExpectsHostDispatch(eventType) {
+			t.Fatalf("expected %q to require host dispatch", eventType)
+		}
+	}
+	for _, eventType := range []string{"language", "status", "ready", "armed", "error", ""} {
+		if ExpectsHostDispatch(eventType) {
+			t.Fatalf("expected %q to be state-only", eventType)
+		}
+	}
+}
+
 func TestSummarizeCountsInvalidClockOrdering(t *testing.T) {
 	summary := Summarize([]Sample{
-		{Sequence: 1, T2HostRxNS: 200, T3SendInputNS: 100, T0FixtureNS: 400, T4FixtureNS: 300},
+		{Sequence: 1, EventType: "stroke", T2HostRxNS: 200, T3SendInputNS: 100, T0FixtureNS: 400, T4FixtureNS: 300},
 	})
 	if summary.InvalidHostTiming != 1 || summary.InvalidFixtureTiming != 1 {
 		t.Fatalf("invalid timings were hidden: %+v", summary)
@@ -83,9 +114,10 @@ func TestSummarizeCountsInvalidClockOrdering(t *testing.T) {
 
 func TestEvaluateGatePassesCompleteSeriesWithinBudgets(t *testing.T) {
 	summary := Summary{
-		Samples:      10000,
-		HostDispatch: Distribution{Count: 10000, P95: 800 * time.Microsecond, P99: 950 * time.Microsecond},
-		FixtureE2E:   Distribution{Count: 10000, P95: 7 * time.Millisecond, P99: 9 * time.Millisecond},
+		Samples:            10000,
+		HostTimingExpected: 10000,
+		HostDispatch:       Distribution{Count: 10000, P95: 800 * time.Microsecond, P99: 950 * time.Microsecond},
+		FixtureE2E:         Distribution{Count: 10000, P95: 7 * time.Millisecond, P99: 9 * time.Millisecond},
 	}
 	result := EvaluateGate(summary, GateConfig{
 		MinSamples:        10000,
@@ -104,6 +136,7 @@ func TestEvaluateGatePassesCompleteSeriesWithinBudgets(t *testing.T) {
 func TestEvaluateGateExplainsCorrectnessCoverageAndLatencyFailures(t *testing.T) {
 	summary := Summary{
 		Samples:              9999,
+		HostTimingExpected:   9999,
 		SequenceGaps:         1,
 		SequenceDuplicates:   2,
 		SequenceOutOfOrder:   3,
