@@ -1,6 +1,6 @@
 name: transport-composition-migration
 
-# One-shot migration: remove after the validated composition-root commit lands.
+# One-shot migration: remove immediately after the validated composition-root commit lands.
 on:
   push:
     branches: [main]
