@@ -29,8 +29,17 @@ jobs:
       - name: Verify duplicate semantic state is gone
         shell: pwsh
         run: |
-          foreach ($field in @('currentLanguage','currentModifiers','activeThumbMask','protocolVersion','firmwareVersion','activeButtonsMask')) {
-            if (Select-String -Path go-app/main.go -Pattern "^\s+$field\s") { throw "App still owns semantic field $field" }
+          foreach ($declaration in @(
+            'activeButtonsMask uint32',
+            'currentLanguage  string',
+            'currentMode      string',
+            'currentModifiers uint8',
+            'activeThumbMask  uint8',
+            'protocolVersion  int',
+            'firmwareVersion  string',
+            'activeButtons    []int'
+          )) {
+            if (Select-String -Path go-app/main.go -SimpleMatch $declaration) { throw "App still owns semantic field declaration: $declaration" }
           }
           if (-not (Select-String -Path go-app/main.go -SimpleMatch 'CurrentLanguage: semantic.Language')) { throw 'snapshot is not appcore-backed' }
       - name: Test shell and core under race detector
