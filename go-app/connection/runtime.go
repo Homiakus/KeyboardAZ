@@ -186,11 +186,11 @@ func (r *Runtime) loop(ctx context.Context) {
 	defer close(r.done)
 
 	for {
-		if err := r.replayPending(ctx); err != nil {
+		session, pending := r.controller.TakeRuntimeBatch()
+		if !r.publishPending(ctx, pending) {
 			return
 		}
 
-		session := r.controller.Session()
 		if session != nil {
 			if r.pumpSession(ctx, session) {
 				continue
@@ -253,13 +253,13 @@ func (r *Runtime) pumpSession(ctx context.Context, session Session) bool {
 	}
 }
 
-func (r *Runtime) replayPending(ctx context.Context) error {
-	for _, event := range r.controller.TakePending() {
+func (r *Runtime) publishPending(ctx context.Context, pending []protocol.Event) bool {
+	for _, event := range pending {
 		if !r.publishMessage(ctx, event) {
-			return context.Canceled
+			return false
 		}
 	}
-	return nil
+	return true
 }
 
 func (r *Runtime) publishMessage(ctx context.Context, event protocol.Event) bool {
