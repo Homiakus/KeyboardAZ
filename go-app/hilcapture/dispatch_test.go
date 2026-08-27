@@ -4,18 +4,18 @@ import (
 	"testing"
 
 	domainaction "hapticpad-go-app/action"
-	"hapticpad-go-app/handler"
+	"hapticpad-go-app/inputtrace"
 	"hapticpad-go-app/protocol"
 	"hapticpad-go-app/textinput"
 )
 
 type fakeTraceSink struct {
 	action *domainaction.Action
-	trace  handler.InputTrace
+	trace  inputtrace.Trace
 	calls  int
 }
 
-func (s *fakeTraceSink) HandleActionWithTrace(action *domainaction.Action, trace handler.InputTrace) {
+func (s *fakeTraceSink) HandleActionWithTrace(action *domainaction.Action, trace inputtrace.Trace) {
 	s.calls++
 	if action != nil {
 		copy := domainaction.Clone(*action)
