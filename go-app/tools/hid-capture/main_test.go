@@ -9,6 +9,7 @@ import (
 
 	"hapticpad-go-app/handler"
 	"hapticpad-go-app/hidv3"
+	"hapticpad-go-app/hilcapture"
 	"hapticpad-go-app/latencyreport"
 	"hapticpad-go-app/transport"
 )
