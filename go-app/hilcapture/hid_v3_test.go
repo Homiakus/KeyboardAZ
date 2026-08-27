@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"hapticpad-go-app/handler"
 	"hapticpad-go-app/hidv3"
 	"hapticpad-go-app/latencyreport"
 	"hapticpad-go-app/transport"
@@ -51,6 +52,71 @@ func TestHIDV3CSVObserverWritesCanonicalDataset(t *testing.T) {
 	}
 	if sample.EventType != "stroke" || sample.Button != 17 || sample.Modifiers != 0x09 {
 		t.Fatalf("semantic mapping changed: %+v", sample)
+	}
+}
+
+func TestHIDV3CSVObserverCorrelatesSendInputBySequence(t *testing.T) {
+	var buffer bytes.Buffer
+	observer, err := NewHIDV3CSVObserver(&buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostReceivedAt := time.Unix(1_800_000_000, 100)
+	sendInputAt := hostReceivedAt.Add(750 * time.Microsecond)
+	if err := observer.ObserveHIDV3(hidv3.Observation{
+		Report: transport.ReportV3{
+			Type:             transport.EventStroke,
+			Language:         transport.LanguageEnglish,
+			ButtonOrAction:   3,
+			Sequence:         9,
+			EventTimestampUS: 12345,
+		},
+		HostReceivedAt: hostReceivedAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	observer.ObserveSendInput(handler.SendInputObservation{
+		Trace:    handler.InputTrace{Transport: latencyreport.TransportHIDV3, Sequence: 9},
+		CalledAt: sendInputAt,
+		Success:  true,
+	})
+	if err := observer.Err(); err != nil {
+		t.Fatalf("unexpected correlation error: %v", err)
+	}
+	if err := observer.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	dataset, err := latencyreport.ParseDatasetCSV(bytes.NewReader(buffer.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sample := dataset.Samples[0]
+	if sample.T2HostRxNS != hostReceivedAt.UnixNano() || sample.T3SendInputNS != sendInputAt.UnixNano() {
+		t.Fatalf("unexpected T2/T3 correlation: %+v", sample)
+	}
+	stats := observer.Stats()
+	if stats.Captured != 1 || stats.SendInputObserved != 1 || stats.SendInputFailures != 0 || stats.Flushed != 1 {
+		t.Fatalf("unexpected capture stats: %+v", stats)
+	}
+}
+
+func TestHIDV3CSVObserverDetectsUnmatchedSendInput(t *testing.T) {
+	var buffer bytes.Buffer
+	observer, err := NewHIDV3CSVObserver(&buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer.ObserveSendInput(handler.SendInputObservation{
+		Trace:    handler.InputTrace{Transport: latencyreport.TransportHIDV3, Sequence: 44},
+		CalledAt: time.Now(),
+		Success:  true,
+	})
+	if observer.Err() == nil {
+		t.Fatal("expected unmatched SendInput correlation error")
+	}
+	if err := observer.Flush(); err == nil {
+		t.Fatal("correlation error must make capture flush fail closed")
 	}
 }
 
