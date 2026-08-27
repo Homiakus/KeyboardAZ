@@ -12,12 +12,12 @@ func TestDatasetWriterRoundTripsTransportAwareSamples(t *testing.T) {
 		t.Fatalf("NewDatasetWriter: %v", err)
 	}
 	want := Sample{
-		Sequence:      17,
-		T1FirmwareUS:  ^uint32(0),
-		T2HostRxNS:    1_800_000_000_123_456_789,
-		EventType:     "stroke",
-		Button:        4,
-		Modifiers:     0x09,
+		Sequence:     17,
+		T1FirmwareUS: ^uint32(0),
+		T2HostRxNS:   1_800_000_000_123_456_789,
+		EventType:    "stroke",
+		Button:       4,
+		Modifiers:    0x09,
 	}
 	if err := writer.WriteSample(want); err != nil {
 		t.Fatalf("WriteSample: %v", err)
