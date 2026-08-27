@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"hapticpad-go-app/device"
-	appserial "hapticpad-go-app/serial"
+	"hapticpad-go-app/protocol"
 )
 
 const (
@@ -18,12 +18,12 @@ const (
 )
 
 // Runtime owns the live session pump and recovery loop. The GUI consumes one
-// stable Messages/Errors pair and never needs to swap channels when a USB COM
-// locator changes after unplug/replug.
+// stable Messages/Errors pair and never needs to swap channels when a USB
+// locator changes after unplug/replug. The stream is transport-neutral.
 type Runtime struct {
 	controller *Controller
 
-	messages chan appserial.ButtonMessage
+	messages chan protocol.Event
 	errors   chan error
 	wake     chan struct{}
 	stop     chan struct{}
@@ -42,7 +42,7 @@ func NewRuntime(controller *Controller) *Runtime {
 	}
 	return &Runtime{
 		controller: controller,
-		messages:   make(chan appserial.ButtonMessage, runtimeMessageBuffer),
+		messages:   make(chan protocol.Event, runtimeMessageBuffer),
 		errors:     make(chan error, runtimeErrorBuffer),
 		wake:       make(chan struct{}, 1),
 		stop:       make(chan struct{}),
@@ -57,7 +57,7 @@ func (r *Runtime) Controller() *Controller {
 	return r.controller
 }
 
-func (r *Runtime) Messages() <-chan appserial.ButtonMessage {
+func (r *Runtime) Messages() <-chan protocol.Event {
 	if r == nil {
 		return nil
 	}
@@ -73,7 +73,7 @@ func (r *Runtime) Errors() <-chan error {
 
 // Start is idempotent. Recovery does not begin until the controller is placed
 // into a recovery epoch by StartRecovery, so a first-run app with no selected
-// device stays idle rather than probing arbitrary serial ports.
+// device stays idle rather than probing arbitrary ports.
 func (r *Runtime) Start() {
 	if r == nil {
 		return
@@ -91,8 +91,8 @@ func (r *Runtime) Start() {
 }
 
 // ConnectExplicit validates a user-selected candidate before making it the live
-// stream. Pending messages consumed by handshake are replayed by the runtime
-// before it reads new messages from the transport.
+// stream. Pending events consumed by handshake are replayed by the runtime
+// before it reads new events from the transport.
 func (r *Runtime) ConnectExplicit(ctx context.Context, candidate device.Candidate) error {
 	if r == nil {
 		return errors.New("nil connection runtime")
@@ -231,12 +231,12 @@ func (r *Runtime) pumpSession(ctx context.Context, session Session) bool {
 			if r.controller.Session() != session {
 				return true
 			}
-		case msg, ok := <-messages:
+		case event, ok := <-messages:
 			if !ok {
 				r.handleSessionFailure(io.EOF)
 				return true
 			}
-			if !r.publishMessage(ctx, msg) {
+			if !r.publishMessage(ctx, event) {
 				return false
 			}
 		case err, ok := <-errorsCh:
@@ -254,17 +254,17 @@ func (r *Runtime) pumpSession(ctx context.Context, session Session) bool {
 }
 
 func (r *Runtime) replayPending(ctx context.Context) error {
-	for _, msg := range r.controller.TakePending() {
-		if !r.publishMessage(ctx, msg) {
+	for _, event := range r.controller.TakePending() {
+		if !r.publishMessage(ctx, event) {
 			return context.Canceled
 		}
 	}
 	return nil
 }
 
-func (r *Runtime) publishMessage(ctx context.Context, msg appserial.ButtonMessage) bool {
+func (r *Runtime) publishMessage(ctx context.Context, event protocol.Event) bool {
 	select {
-	case r.messages <- msg:
+	case r.messages <- event:
 		return true
 	case <-ctx.Done():
 		return false
