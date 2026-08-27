@@ -1,33 +1,12 @@
 package handler
 
-import "time"
+import "hapticpad-go-app/inputtrace"
 
-// InputTrace is deliberately content-free. It correlates one validated
-// transport event with its first OS input injection without retaining typed
-// text, key names, resolved Unicode, or macro contents.
-type InputTrace struct {
-	Transport string
-	Sequence  uint32
-}
-
-func (t InputTrace) Valid() bool {
-	return t.Transport != "" && t.Sequence != 0
-}
-
-// SendInputObservation marks the first actual Windows SendInput invocation for
-// one traced realtime action. CalledAt is captured immediately before the Win32
-// call; Success reports whether the full input batch was accepted.
-type SendInputObservation struct {
-	Trace    InputTrace
-	CalledAt time.Time
-	Success  bool
-}
-
-// SendInputObserver is opt-in HIL instrumentation. Implementations must return
-// promptly because this callback executes on the realtime input worker.
-type SendInputObserver interface {
-	ObserveSendInput(SendInputObservation)
-}
+// Compatibility aliases keep the handler API stable while the trace contract
+// itself lives in a zero-dependency package usable by HIL/core code on every OS.
+type InputTrace = inputtrace.Trace
+type SendInputObservation = inputtrace.SendInputObservation
+type SendInputObserver = inputtrace.SendInputObserver
 
 // inputTraceTarget is implemented by the Windows keyboard. Keeping this
 // interface private prevents trace lifecycle controls from leaking into normal
