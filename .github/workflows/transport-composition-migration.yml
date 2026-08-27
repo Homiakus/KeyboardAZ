@@ -1,0 +1,64 @@
+name: transport-composition-migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/transport-composition-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Inject CDC opener at composition root
+        shell: pwsh
+        run: |
+          $path = 'go-app/main.go'
+          $source = Get-Content $path -Raw
+          $old = 'controller := connection.NewController(identity, baudRate)'
+          $new = @'
+          controller := connection.NewControllerWithOptions(connection.ControllerOptions{
+            Reference: identity,
+            BaudRate:  baudRate,
+            Open: func(portName string) (connection.Session, error) {
+              return serial.NewReader(portName, baudRate)
+            },
+          })
+          '@
+          if (-not $source.Contains($old)) { throw 'expected controller composition site not found' }
+          $source = $source.Replace($old, $new.Trim())
+          Set-Content -Path $path -Value $source -Encoding utf8
+          gofmt -w $path
+      - name: Verify dependency direction
+        shell: pwsh
+        run: |
+          if (Select-String -Path go-app/connection/*.go -Pattern 'hapticpad-go-app/serial' | Where-Object { $_.Path -notmatch '_test.go$' }) { throw 'connection production code still imports serial' }
+          if (-not (Select-String -Path go-app/main.go -SimpleMatch 'return serial.NewReader(portName, baudRate)')) { throw 'composition root does not inject CDC opener' }
+      - name: Test Windows application
+        working-directory: go-app
+        run: go test ./...
+      - name: Vet application
+        working-directory: go-app
+        run: go vet ./...
+      - name: Build Windows application
+        working-directory: go-app
+        run: go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../dist/KeyboardAZ.exe .
+      - name: Commit composition-root migration
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add go-app/main.go
+          if (git diff --cached --quiet) { throw 'migration produced no changes' }
+          git commit -m "refactor: compose CDC transport above connection policy"
+          git push origin HEAD:main
