@@ -25,6 +25,7 @@ func TestCorePackagesDoNotDependOnUIOrHigherLayers(t *testing.T) {
 		{dir: "telemetry", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/textinput", "hapticpad-go-app/config", "hapticpad-go-app/serial"}},
 		{dir: "textinput", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/device", "hapticpad-go-app/serial"}},
 		{dir: "layoutedit", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/device", "hapticpad-go-app/serial"}},
+		{dir: "handler", forbidden: []string{"gioui.org/", "hapticpad-go-app/config", "hapticpad-go-app/textinput", "hapticpad-go-app/layoutedit", "hapticpad-go-app/connection", "hapticpad-go-app/serial", "hapticpad-go-app/device"}},
 		{dir: "appcore", forbidden: []string{"gioui.org/", "hapticpad-go-app/connection", "hapticpad-go-app/handler", "hapticpad-go-app/device", "hapticpad-go-app/serial", "hapticpad-go-app/textinput", "hapticpad-go-app/config"}},
 		{dir: "connection", forbidden: []string{"gioui.org/", "hapticpad-go-app/handler", "hapticpad-go-app/textinput", "hapticpad-go-app/config", "hapticpad-go-app/serial"}},
 	}
@@ -43,7 +44,6 @@ func TestCorePackagesDoNotDependOnUIOrHigherLayers(t *testing.T) {
 						if strings.HasPrefix(imported, forbidden) {
 							t.Errorf("%s imports forbidden higher-layer dependency %q", file, imported)
 						}
-					}
 				}
 			}
 		})
