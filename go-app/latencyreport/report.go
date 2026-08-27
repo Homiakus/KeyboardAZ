@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -44,6 +45,7 @@ type Distribution struct {
 
 type Summary struct {
 	Samples              int          `json:"samples"`
+	HostTimingExpected   int          `json:"host_timing_expected"`
 	SequenceGaps         uint64       `json:"sequence_gaps"`
 	SequenceDuplicates   uint64       `json:"sequence_duplicates"`
 	SequenceOutOfOrder   uint64       `json:"sequence_out_of_order"`
@@ -176,6 +178,19 @@ func parseUint(value string, bits int) (uint64, error) {
 	return strconv.ParseUint(value, 10, bits)
 }
 
+// ExpectsHostDispatch reports whether one semantic event must produce an
+// immediate OS input injection. Lifecycle/state-only events remain part of the
+// sequence-integrity dataset but are intentionally excluded from T2->T3
+// coverage. Legacy press/combo/repeat names are retained for historical CSVs.
+func ExpectsHostDispatch(eventType string) bool {
+	switch strings.ToLower(strings.TrimSpace(eventType)) {
+	case "stroke", "tap", "press", "combo", "repeat":
+		return true
+	default:
+		return false
+	}
+}
+
 func Summarize(samples []Sample) Summary {
 	summary := Summary{Samples: len(samples)}
 	host := make([]time.Duration, 0, len(samples))
@@ -184,11 +199,15 @@ func Summarize(samples []Sample) Summary {
 	var last uint32
 	initialized := false
 	for _, sample := range samples {
-		if sample.T2HostRxNS > 0 && sample.T3SendInputNS > 0 {
-			if sample.T3SendInputNS >= sample.T2HostRxNS {
-				host = append(host, time.Duration(sample.T3SendInputNS-sample.T2HostRxNS))
-			} else {
-				summary.InvalidHostTiming++
+		expectsHost := ExpectsHostDispatch(sample.EventType)
+		if expectsHost {
+			summary.HostTimingExpected++
+			if sample.T2HostRxNS > 0 && sample.T3SendInputNS > 0 {
+				if sample.T3SendInputNS >= sample.T2HostRxNS {
+					host = append(host, time.Duration(sample.T3SendInputNS-sample.T2HostRxNS))
+				} else {
+					summary.InvalidHostTiming++
+				}
 			}
 		}
 		if sample.T0FixtureNS > 0 && sample.T4FixtureNS > 0 {
@@ -254,8 +273,8 @@ func EvaluateGate(summary Summary, config GateConfig) GateResult {
 	if summary.InvalidFixtureTiming != 0 {
 		failures = append(failures, fmt.Sprintf("invalid fixture timing=%d", summary.InvalidFixtureTiming))
 	}
-	if config.RequireHostTiming && summary.HostDispatch.Count != summary.Samples {
-		failures = append(failures, fmt.Sprintf("host timing coverage=%d/%d", summary.HostDispatch.Count, summary.Samples))
+	if config.RequireHostTiming && summary.HostDispatch.Count != summary.HostTimingExpected {
+		failures = append(failures, fmt.Sprintf("host timing coverage=%d/%d actionable events", summary.HostDispatch.Count, summary.HostTimingExpected))
 	}
 	if config.RequireFixtureE2E && summary.FixtureE2E.Count != summary.Samples {
 		failures = append(failures, fmt.Sprintf("fixture E2E coverage=%d/%d", summary.FixtureE2E.Count, summary.Samples))
