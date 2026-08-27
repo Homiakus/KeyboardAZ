@@ -25,6 +25,7 @@
 
 #include "input_debounce.h"
 #include "input_semantics.h"
+#include "hid_v3_transport.h"
 #include "protocol_v2.h"
 #include "text_input_config.h"
 
@@ -43,6 +44,9 @@ Language g_language = Language::English;
 bool g_inputsArmed = false;
 uint32_t g_bootMs = 0;
 uint32_t g_sequence = 0;
+#if HAPTICPAD_ENABLE_HID_V3
+uint32_t g_realtimeSequence = 0;
+#endif
 uint32_t g_thumbPressOrder = 0;
 uint32_t g_lastReadyBeaconMs = 0;
 
@@ -69,6 +73,42 @@ uint32_t nextSequence() {
     return g_sequence;
 }
 
+#if HAPTICPAD_ENABLE_HID_V3
+uint32_t nextRealtimeSequence() {
+    ++g_realtimeSequence;
+    if (g_realtimeSequence == 0) {
+        ++g_realtimeSequence;
+    }
+    return g_realtimeSequence;
+}
+
+HapticpadProtocolV3::Language protocolV3Language(Language language) {
+    return language == Language::Russian
+        ? HapticpadProtocolV3::Language::Russian
+        : HapticpadProtocolV3::Language::English;
+}
+
+bool protocolV3TapAction(const char* action, uint8_t& encodedAction) {
+    if (action == nullptr) {
+        return false;
+    }
+    if (strcmp(action, "space") == 0) {
+        encodedAction = static_cast<uint8_t>(HapticpadProtocolV3::TapAction::Space);
+        return true;
+    }
+    if (strcmp(action, "enter") == 0) {
+        encodedAction = static_cast<uint8_t>(HapticpadProtocolV3::TapAction::Enter);
+        return true;
+    }
+    if (strcmp(action, "backspace") == 0) {
+        encodedAction = static_cast<uint8_t>(HapticpadProtocolV3::TapAction::Backspace);
+        return true;
+    }
+    return false;
+}
+
+#endif
+
 void writeProtocolBuffer(const char* buffer, size_t length) {
     if (buffer == nullptr || length == 0U) {
         return;
@@ -86,6 +126,31 @@ void sendError(const char* code, uint32_t value) {
         value);
     writeProtocolBuffer(buffer, written);
 }
+
+#if HAPTICPAD_ENABLE_HID_V3
+bool sendHIDV3UserEvent(
+    HapticpadProtocolV3::EventType type,
+    uint8_t buttonOrAction,
+    uint8_t modifiers) {
+    const uint32_t sequence = nextRealtimeSequence();
+    const HapticpadProtocolV3::Report report{
+        type,
+        0U,
+        protocolV3Language(g_language),
+        buttonOrAction,
+        modifiers,
+        sequence,
+        micros(),
+    };
+    if (HapticpadHIDV3::send(report)) {
+        return true;
+    }
+    // Do not silently fall back to CDC realtime. A consumed HID sequence makes
+    // the loss observable to host telemetry and the CDC diagnostic explains it.
+    sendError("hid_send_failed", sequence);
+    return false;
+}
+#endif
 
 bool allowUserEvent(uint32_t nowMs) {
     if (elapsedMs(nowMs, g_rateWindowStartedAtMs) >= 1000U) {
@@ -133,6 +198,13 @@ void sendStroke(uint8_t button, uint8_t modifiers, uint32_t nowMs) {
         return;
     }
 
+#if HAPTICPAD_ENABLE_HID_V3
+    sendHIDV3UserEvent(HapticpadProtocolV3::EventType::Stroke, button, modifiers);
+    if (!HapticpadHIDV3::kMirrorCDCUserEvents) {
+        return;
+    }
+#endif
+
     char buffer[80];
     const size_t written = HapticpadProtocolV2::encodeStroke(
         buffer,
@@ -149,6 +221,18 @@ void sendTap(const char* action, uint32_t nowMs) {
         return;
     }
 
+#if HAPTICPAD_ENABLE_HID_V3
+    uint8_t encodedAction = 0U;
+    if (!protocolV3TapAction(action, encodedAction)) {
+        sendError("bad_tap_action", 0U);
+        return;
+    }
+    sendHIDV3UserEvent(HapticpadProtocolV3::EventType::Tap, encodedAction, 0U);
+    if (!HapticpadHIDV3::kMirrorCDCUserEvents) {
+        return;
+    }
+#endif
+
     char buffer[72];
     const size_t written = HapticpadProtocolV2::encodeTap(
         buffer,
@@ -159,6 +243,13 @@ void sendTap(const char* action, uint32_t nowMs) {
 }
 
 void sendLanguage() {
+#if HAPTICPAD_ENABLE_HID_V3
+    sendHIDV3UserEvent(HapticpadProtocolV3::EventType::Language, 0U, 0U);
+    if (!HapticpadHIDV3::kMirrorCDCUserEvents) {
+        return;
+    }
+#endif
+
     char buffer[64];
     const size_t written = HapticpadProtocolV2::encodeLanguage(
         buffer,
@@ -532,6 +623,11 @@ void processHostCommands(uint32_t nowMs, uint8_t maxBytes) {
 
 void setup() {
     Serial.begin(kSerialBaudRate);
+#if HAPTICPAD_ENABLE_HID_V3
+    if (!HapticpadHIDV3::begin()) {
+        sendError("hid_init_failed", 0U);
+    }
+#endif
 
     const uint32_t nowMs = millis();
     const uint32_t nowUs = micros();

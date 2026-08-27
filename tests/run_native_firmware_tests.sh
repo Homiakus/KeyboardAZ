@@ -32,3 +32,10 @@ g++ -std=gnu++17 -Wall -Wextra -Werror \
   tests/native/input_semantics_test.cpp \
   -o .test-build/input_semantics_test
 .test-build/input_semantics_test
+
+
+g++ -std=gnu++17 -Wall -Wextra -Werror \
+  -Itests/native -Iinclude \
+  tests/native/firmware_hid_v3_state_machine_test.cpp \
+  -o .test-build/firmware_hid_v3_state_machine_test
+.test-build/firmware_hid_v3_state_machine_test
