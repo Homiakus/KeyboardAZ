@@ -59,6 +59,44 @@ func TestCompositeSessionUsesRealtimeMessagesAndCDCCommands(t *testing.T) {
 	}
 }
 
+func TestCompositeSessionDrainsCDCControlMessages(t *testing.T) {
+	control := newFakeSession()
+	realtime := newFakeEventSource()
+	session, err := NewCompositeSession(control, realtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	// Send more control-plane messages than the fake CDC channel can hold. If
+	// CompositeSession stops consuming control.Messages, this test deterministically
+	// blocks and times out once the channel reaches capacity.
+	for i := 0; i < cap(control.messages)+32; i++ {
+		select {
+		case control.messages <- protocol.Event{Protocol: 2, Type: "ready", Sequence: uint32(i + 1)}:
+		case <-time.After(time.Second):
+			t.Fatalf("CDC control queue stopped draining at message %d", i)
+		}
+	}
+
+	// Control-plane events must never leak into the realtime application stream.
+	select {
+	case event := <-session.Messages():
+		t.Fatalf("CDC control event leaked into realtime stream: %+v", event)
+	default:
+	}
+
+	realtime.messages <- protocol.Event{Protocol: 3, Type: "tap", Sequence: 99, Action: "space"}
+	select {
+	case event := <-session.Messages():
+		if event.Protocol != 3 || event.Sequence != 99 || event.Action != "space" {
+			t.Fatalf("unexpected realtime event after CDC drain: %+v", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("realtime stream stalled while draining CDC control messages")
+	}
+}
+
 func TestCompositeSessionMergesTransportErrors(t *testing.T) {
 	control := newFakeSession()
 	realtime := newFakeEventSource()
