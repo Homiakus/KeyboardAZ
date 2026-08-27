@@ -20,3 +20,9 @@ g++ -std=gnu++17 -Wall -Wextra -Werror \
   tests/native/input_debounce_test.cpp \
   -o .test-build/input_debounce_test
 .test-build/input_debounce_test
+
+g++ -std=gnu++17 -Wall -Wextra -Werror \
+  -Itests/native -Iinclude \
+  tests/native/input_semantics_test.cpp \
+  -o .test-build/input_semantics_test
+.test-build/input_semantics_test
