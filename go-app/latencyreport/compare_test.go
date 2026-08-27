@@ -21,7 +21,9 @@ func TestCompareTransportDatasetsPassesMeaningfulHIDImprovement(t *testing.T) {
 func TestCompareTransportDatasetsRejectsSmallGainAndTailRegression(t *testing.T) {
 	baseline := Dataset{Transport: TransportCDCV2, Samples: syntheticE2ESamples(10000, 10*time.Millisecond)}
 	candidateSamples := syntheticE2ESamples(10000, 9*time.Millisecond)
-	candidateSamples[len(candidateSamples)-1].T4FixtureNS = int64(12 * time.Millisecond)
+	for i := len(candidateSamples) - 200; i < len(candidateSamples); i++ {
+		candidateSamples[i].T4FixtureNS = candidateSamples[i].T0FixtureNS + int64(12*time.Millisecond)
+	}
 	candidate := Dataset{Transport: TransportHIDV3, Samples: candidateSamples}
 
 	result := CompareTransportDatasets(baseline, candidate, DefaultHIDPromotionConfig())
