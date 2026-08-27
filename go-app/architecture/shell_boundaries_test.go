@@ -21,7 +21,6 @@ func TestConfiguratorUsesApplicationEditingBoundary(t *testing.T) {
 		}
 	}
 
-	// Match a plain assignment but not a comparison (==) or other operator.
 	activeProfileAssignment := regexp.MustCompile(`layoutDraft\.ActiveProfile\s*=\s*[^=]`)
 	if activeProfileAssignment.MatchString(content) {
 		t.Error("configurator.go directly mutates layoutDraft.ActiveProfile instead of using layoutedit")
@@ -59,6 +58,22 @@ func TestCompositionRootInjectsConcreteCDCTransport(t *testing.T) {
 	} {
 		if !strings.Contains(content, required) {
 			t.Errorf("main.go does not explicitly compose CDC transport through %q", required)
+		}
+	}
+}
+
+func TestApplicationShellConsumesProtocolEventsDirectly(t *testing.T) {
+	content := readSource(t, "main.go")
+	if strings.Contains(content, "serial.ButtonMessage") {
+		t.Error("main.go exposes the CDC compatibility message type instead of protocol.Event")
+	}
+	for _, required := range []string{
+		"var messages <-chan protocol.Event",
+		"func (a *App) handleMessage(msg protocol.Event)",
+		"a.coreState.ApplyEvent(msg)",
+	} {
+		if !strings.Contains(content, required) {
+			t.Errorf("main.go lost direct protocol.Event application boundary %q", required)
 		}
 	}
 }
