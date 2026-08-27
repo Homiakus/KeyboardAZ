@@ -25,10 +25,13 @@ jobs:
           grep -F 'if msg.Protocol >= 2 {' go-app/main.go
           grep -F 'a.handleSemanticProtocolMessage(msg)' go-app/main.go
           grep -F 'Ignoring unsupported modern semantic event' go-app/main.go
-          if grep -F $'if msg.Protocol == 2 {\n\t\tswitch msg.Type {' go-app/main.go; then
-            echo 'old protocol-v2 semantic switch remains' >&2
-            exit 1
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('go-app/main.go').read_text(encoding='utf-8')
+          old = '\n\tif msg.Protocol == 2 {\n\t\tswitch msg.Type {'
+          if old in source:
+              raise SystemExit('old protocol-v2 semantic switch remains')
+          PY
       - uses: actions/setup-go@v7
         with:
           go-version-file: go-app/go.mod
