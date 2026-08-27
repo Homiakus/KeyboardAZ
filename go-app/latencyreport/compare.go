@@ -9,10 +9,10 @@ import (
 // transport. The default policy should be conservative: correctness must be
 // perfect, fixture E2E coverage complete and tail latency must not regress.
 type ComparisonConfig struct {
-	MinSamples            int
-	MinP95Improvement     float64 // fraction: 0.20 means at least 20% lower p95
-	RequireFixtureE2E     bool
-	MaxP99Regression      float64 // fraction: 0 means candidate p99 must not increase
+	MinSamples        int
+	MinP95Improvement float64 // fraction: 0.20 means at least 20% lower p95
+	RequireFixtureE2E bool
+	MaxP99Regression  float64 // fraction: 0 means candidate p99 must not increase
 }
 
 type ComparisonResult struct {
