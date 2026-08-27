@@ -327,6 +327,14 @@ func parseV2Format(line string) (ButtonMessage, error) {
 		return msg, fmt.Errorf("unknown v2 type %q", msg.Type)
 	}
 
+	// v2 is a semantic protocol: a successful parse is promised to be a fully
+	// valid event. Keeping this check at the parser boundary prevents callers
+	// from accidentally treating a syntactically-shaped but semantically
+	// impossible message (for example sequence=0 or an empty language) as valid.
+	// Reader.readLoop deliberately repeats validateMessage as defense-in-depth.
+	if !validateMessage(msg) {
+		return msg, fmt.Errorf("invalid v2 semantic message type=%q sequence=%d", msg.Type, msg.Sequence)
+	}
 	return msg, nil
 }
 
