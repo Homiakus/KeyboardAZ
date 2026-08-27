@@ -1,6 +1,6 @@
 # KeyboardAZ
 
-KeyboardAZ — прошивка RP2040 и Windows companion app для низколатентной клавиатуры Hapticpad 22+4. Firmware формирует semantic strokes protocol v2, а Go-приложение преобразует их в английский/русский Unicode, клавиши, сочетания, команды и макросы.
+KeyboardAZ — прошивка RP2040 и Windows companion app для низколатентной клавиатуры Hapticpad 22+4. Firmware формирует semantic strokes, а Go-приложение преобразует их в английский/русский Unicode, клавиши, сочетания, команды и макросы.
 
 ## Быстрый запуск на Windows
 
@@ -36,7 +36,7 @@ Windows-приложение остаётся активным в фоне:
 - `Ctrl+Shift+F12` показывает или скрывает окно;
 - выход через меню трея корректно закрывает основное окно и фоновые workers.
 
-Companion app должен работать, чтобы protocol v2 преобразовывался в Unicode и системные действия.
+Companion app должен работать, чтобы semantic events преобразовывались в Unicode и системные действия.
 
 ## Настройка клавиш
 
@@ -65,9 +65,46 @@ Connection lifecycle отделён от GUI:
 - reconnect использует bounded backoff и не прекращается навсегда после серии ошибок;
 - неоднозначный USB-кандидат не выбирается автоматически;
 - `connection` работает с transport-neutral `protocol.Event`;
-- текущий CDC v2 adapter инжектируется только в composition root.
+- CDC control adapter и optional Raw HID realtime adapter собираются только в composition root.
 
-Эта граница подготовлена для Raw HID v3 без переписывания reconnect/application layers.
+### Экспериментальный Raw HID v3
+
+**Production default остаётся `cdc-v2`.** Raw HID v3 уже реализован на firmware и Windows host, но включается только явно для A/B HIL до того, как измерения докажут преимущество.
+
+Архитектура экспериментального режима:
+
+```text
+CDC v2     -> identity handshake / commands / status / diagnostics
+Raw HID v3 -> realtime stroke/tap/language events @ 1 ms endpoint
+                              ↓
+                        protocol.Event
+                              ↓
+                      existing app pipeline
+```
+
+Для firmware-кандидата:
+
+```powershell
+pio run -e pico-hid-v3
+```
+
+После прошивки `pico-hid-v3` включите host realtime path только для текущего процесса:
+
+```powershell
+$env:KEYBOARDAZ_REALTIME_TRANSPORT = 'hid-v3'
+.\manage.ps1 -Action Run
+```
+
+Вернуться к production CDC path:
+
+```powershell
+Remove-Item Env:KEYBOARDAZ_REALTIME_TRANSPORT -ErrorAction SilentlyContinue
+.\manage.ps1 -Action Run
+```
+
+Допустимые значения: `cdc-v2` и `hid-v3`. Неизвестное значение не приводит к скрытому fallback: подключение завершается явной диагностической ошибкой.
+
+Windows Raw HID reader использует штатные SetupAPI/HID APIs без CGO и внешнего `hidapi.dll`. HID interface сопоставляется с сохранённой USB identity; при неоднозначности автоматический выбор запрещён. CDC-v2 и HID-v3 имеют раздельные sequence telemetry streams, поэтому их counters не создают ложные gaps при одновременной работе composite device.
 
 ## Сборка
 
@@ -128,7 +165,14 @@ Release build создаётся с `-trimpath` и `-H=windowsgui`, поэтом
 - benchmarks semantic resolver и protocol-v3 codec;
 - native firmware state-machine/protocol simulation, если доступны `bash` и `g++`.
 
-GitHub Actions дополнительно собирает Windows desktop app и запускает firmware simulation.
+GitHub Actions дополнительно:
+
+- тестирует release toolchain Go 1.26.7 и compatibility с Go 1.27;
+- запускает `govulncheck` для Windows release path;
+- собирает Windows desktop app;
+- собирает и проверяет размер **production `pico`** firmware;
+- отдельно собирает **experimental `pico-hid-v3`** firmware;
+- запускает native firmware simulation.
 
 ## Конфигурация
 
@@ -146,16 +190,19 @@ GitHub Actions дополнительно собирает Windows desktop app �
 ## Структура
 
 ```text
-src/MacroPad.ino              firmware protocol v2
-include/text_input_config.h   параметры firmware
-platformio.ini                профиль RP2040
+src/MacroPad.ino              firmware semantic loop / protocol v2
+src/hid_v3_transport.cpp      feature-gated vendor Raw HID v3 transport
+include/protocol_v3.h         fixed 16-byte firmware codec
+platformio.ini                production pico + experimental pico-hid-v3
 pinout.csv                    физическая распиновка 22+4
 go-app/protocol/              canonical semantic events
-go-app/connection/            identity/handshake/recovery/runtime policy
+go-app/transport/             protocol-v3 codec / semantic translation
+go-app/hidv3/                 native Windows Raw HID v3 adapter
+go-app/connection/            identity/handshake/recovery/composite runtime policy
 go-app/appcore/               UI-independent application state
 go-app/layoutedit/            transactional configurator application layer
 go-app/workspace/             filesystem path policy
-go-app/serial/                текущий CDC v2 adapter
+go-app/serial/                CDC v1/v2 adapter
 go-app/                       Windows companion/UI composition
 manage.ps1                    единое меню сборки/прошивки
 KeyboardAZ.cmd                точка запуска меню Windows
@@ -176,7 +223,7 @@ legacy/                       архив несовместимой v1
 
 ## Важные ограничения
 
-- Текущая production firmware использует USB Serial, а не Raw HID v3.
+- **CDC v2 остаётся production default**, Raw HID v3 пока experimental opt-in.
 - Для end-to-end latency и изменения debounce нужны измерения на реальном устройстве.
 - Старые файлы в `legacy/` не следует использовать для protocol v2.
-- Перед переключением default transport требуется HIL A/B сравнение CDC v2 и HID v3.
+- Перед переключением default transport требуется HIL A/B сравнение CDC v2 и HID v3 без correctness regression.
