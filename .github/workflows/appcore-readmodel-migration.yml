@@ -1,0 +1,135 @@
+name: appcore-readmodel-migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/appcore-readmodel-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Route dashboard semantic snapshot through appcore
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path('go-app/main.go')
+          source = path.read_text(encoding='utf-8')
+          start = source.index('func (a *App) SnapshotState() AppSnapshot {')
+          end = source.index('// Названия кнопок', start)
+          replacement = '''func (a *App) SnapshotState() AppSnapshot {
+              var reconnecting bool
+              var reconnectAttempts int
+              var runtimeConnected bool
+              if a.connectionRuntime != nil {
+                  runtimeSnapshot := a.connectionRuntime.Snapshot()
+                  state := runtimeSnapshot.Connection.State
+                  reconnecting = runtimeSnapshot.Connection.Recovering || state == connection.Reconnecting || state == connection.Degraded || state == connection.Opening || state == connection.Handshaking
+                  reconnectAttempts = runtimeSnapshot.Connection.Attempts
+                  runtimeConnected = runtimeSnapshot.HasSession && state == connection.Ready
+              }
+
+              var semantic appcore.Snapshot
+              hasSemantic := a.coreState != nil
+              if hasSemantic {
+                  semantic = a.coreState.Snapshot()
+              }
+
+              a.mu.RLock()
+              defer a.mu.RUnlock()
+
+              historyCopy := make([]HistoryEntry, len(a.history))
+              copy(historyCopy, a.history)
+              portItemsCopy := make([]string, len(a.portItems))
+              copy(portItemsCopy, a.portItems)
+
+              connected := a.connected
+              if a.connectionRuntime != nil {
+                  connected = runtimeConnected
+              }
+
+              protocolVersion := a.protocolVersion
+              firmwareVersion := a.firmwareVersion
+              currentLanguage := a.currentLanguage
+              currentModifiers := a.currentModifiers
+              activeThumbMask := a.activeThumbMask
+              activeButtonsMask := a.activeButtonsMask
+              activeButtons := append([]int(nil), a.activeButtons...)
+              currentMode := a.currentMode
+
+              // appcore.State is the canonical semantic read model. The legacy
+              // App fields remain temporarily as a protocol-v1 compatibility
+              // fallback and can now be deleted independently.
+              if hasSemantic {
+                  protocolVersion = semantic.ProtocolVersion
+                  firmwareVersion = semantic.FirmwareVersion
+                  currentLanguage = semantic.Language
+                  currentModifiers = semantic.Modifiers
+                  activeThumbMask = semantic.ActiveThumbMask
+                  activeButtonsMask = semantic.ActiveButtonsMask
+                  activeButtons = append(activeButtons[:0], semantic.ActiveButtons...)
+                  if semantic.ProtocolVersion >= 2 {
+                      currentMode = textinput.ModeName(semantic.Modifiers)
+                  }
+              }
+
+              return AppSnapshot{
+                  Connected: connected, Reconnecting: reconnecting, ReconnectAttempts: reconnectAttempts,
+                  CurrentLayer: a.currentLayer, CurrentLanguage: currentLanguage, CurrentMode: currentMode,
+                  CurrentModifiers: currentModifiers, ActiveThumbMask: activeThumbMask,
+                  ProtocolVersion: protocolVersion, FirmwareVersion: firmwareVersion,
+                  ActiveButtons: activeButtons, ActiveButtonsMask: activeButtonsMask,
+                  History: historyCopy, ErrorMsg: a.errorMsg, SerialPort: a.serialPort, PortItems: portItemsCopy,
+              }
+          }
+
+          '''
+          # Normalize indentation introduced by embedding this block in Python.
+          import textwrap
+          replacement = textwrap.dedent(replacement)
+          source = source[:start] + replacement + source[end:]
+          path.write_text(source, encoding='utf-8')
+          '@ | python -
+          gofmt -w go-app/main.go
+      - name: Verify canonical read model
+        shell: pwsh
+        run: |
+          if (-not (Select-String -Path go-app/main.go -SimpleMatch 'semantic = a.coreState.Snapshot()')) { throw 'appcore snapshot not used' }
+          if (-not (Select-String -Path go-app/main.go -SimpleMatch 'protocolVersion = semantic.ProtocolVersion')) { throw 'protocol still read from shell state' }
+          if (-not (Select-String -Path go-app/main.go -SimpleMatch 'activeButtonsMask = semantic.ActiveButtonsMask')) { throw 'button mask still read from shell state' }
+      - name: Test state and shell
+        working-directory: go-app
+        run: go test -race ./appcore ./protocol ./textinput ./architecture .
+      - name: Test full Windows application
+        working-directory: go-app
+        run: go test ./...
+      - name: Vet application
+        working-directory: go-app
+        run: go vet ./...
+      - name: Build Windows GUI
+        working-directory: go-app
+        run: |
+          New-Item -ItemType Directory -Force ../dist | Out-Null
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../dist/KeyboardAZ.exe .
+      - name: Commit read-model migration
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add go-app/main.go
+          if (git diff --cached --quiet) { throw 'appcore read-model migration produced no changes' }
+          git commit -m "refactor: read dashboard semantics from appcore"
+          git push origin HEAD:main
