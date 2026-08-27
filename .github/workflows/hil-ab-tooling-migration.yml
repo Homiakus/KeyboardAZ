@@ -1,0 +1,58 @@
+name: hil-ab-tooling-migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/hil-ab-tooling-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go-app/go.mod
+          cache-dependency-path: go-app/go.sum
+      - name: Format HIL tooling
+        shell: pwsh
+        working-directory: go-app
+        run: |
+          gofmt -w latencyreport/dataset.go latencyreport/dataset_test.go latencyreport/compare.go latencyreport/compare_test.go tools/latency/main.go tools/latency-compare/main.go
+      - name: Test latency reporting
+        shell: pwsh
+        working-directory: go-app
+        run: go test -race ./latencyreport ./tools/latency ./tools/latency-compare
+      - name: Test full Windows application
+        shell: pwsh
+        working-directory: go-app
+        run: go test ./...
+      - name: Vet application
+        shell: pwsh
+        working-directory: go-app
+        run: go vet ./...
+      - name: Build analyzer CLIs
+        shell: pwsh
+        working-directory: go-app
+        run: |
+          New-Item -ItemType Directory -Force ../dist | Out-Null
+          go build -trimpath -o ../dist/keyboardaz-latency.exe ./tools/latency
+          go build -trimpath -o ../dist/keyboardaz-latency-compare.exe ./tools/latency-compare
+      - name: Commit validated HIL tooling
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add go-app/latencyreport go-app/tools/latency go-app/tools/latency-compare
+          if (git diff --cached --quiet) {
+            Write-Host 'No formatting changes required'
+            exit 0
+          }
+          git commit -m "style: format transport-aware HIL tooling"
+          git push origin HEAD:main
