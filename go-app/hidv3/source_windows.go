@@ -27,7 +27,7 @@ var (
 	setupapi                             = windows.NewLazySystemDLL("setupapi.dll")
 	hidDLL                               = windows.NewLazySystemDLL("hid.dll")
 	procSetupDiGetClassDevsW             = setupapi.NewProc("SetupDiGetClassDevsW")
-	procSetupDiEnumDeviceInterfaces      = setupapi.NewProc("SetupDiEnumDeviceInterfacesW")
+	procSetupDiEnumDeviceInterfaces      = setupapi.NewProc("SetupDiEnumDeviceInterfaces")
 	procSetupDiGetDeviceInterfaceDetailW = setupapi.NewProc("SetupDiGetDeviceInterfaceDetailW")
 	procSetupDiDestroyDeviceInfoList     = setupapi.NewProc("SetupDiDestroyDeviceInfoList")
 	procHidDGetAttributes                = hidDLL.NewProc("HidD_GetAttributes")
