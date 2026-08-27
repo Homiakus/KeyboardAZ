@@ -46,3 +46,9 @@ func (e Event) Clone() Event {
 	e.Buttons = append([]int(nil), e.Buttons...)
 	return e
 }
+
+// Event is a temporary source-compatibility bridge for code that previously
+// converted serial.ButtonMessage into protocol.Event. serial.ButtonMessage is
+// now an alias of Event, so this method costs only the intentional slice clone
+// and can be removed once call sites consume Event directly.
+func (e Event) Event() Event { return e.Clone() }
