@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	domainaction "hapticpad-go-app/action"
+	"hapticpad-go-app/controls"
 )
 
 // ActionType and constants remain source-compatible aliases while the
@@ -31,23 +32,10 @@ const (
 	ActionMacro   = domainaction.Macro
 )
 
-const MainButtonCount = 22
+const MainButtonCount = controls.MainButtonCount
 
-// ButtonNames задает канонические имена кнопок для редактируемого keymap файла.
-var ButtonNames = [MainButtonCount]string{
-	"INDEX_1", "INDEX_2", "INDEX_3", "INDEX_4", "INDEX_5", "INDEX_6",
-	"MIDDLE_1", "MIDDLE_2", "MIDDLE_3", "MIDDLE_4", "MIDDLE_5",
-	"RING_1", "RING_2", "RING_3", "RING_4", "RING_5",
-	"PINKY_1", "PINKY_2", "PINKY_3", "PINKY_4", "PINKY_5", "PINKY_6",
-}
-
-var buttonIndexByName = func() map[string]int {
-	index := make(map[string]int, len(ButtonNames))
-	for i, name := range ButtonNames {
-		index[name] = i
-	}
-	return index
-}()
+// ButtonNames remains source-compatible while controls owns the catalog.
+var ButtonNames = controls.Names()
 
 // Action is a compatibility alias to the canonical domain model.
 type Action = domainaction.Action
@@ -383,8 +371,7 @@ func parseButtonReference(ref string) (int, error) {
 		return buttonIndex, nil
 	}
 
-	normalized := normalizeButtonReference(value)
-	if buttonIndex, ok := buttonIndexByName[normalized]; ok {
+	if buttonIndex, ok := controls.Index(value); ok {
 		return buttonIndex, nil
 	}
 
@@ -543,13 +530,6 @@ func normalizeButtonIndices(buttons []int) []int {
 	}
 
 	return deduped
-}
-
-func normalizeButtonReference(ref string) string {
-	upper := strings.ToUpper(strings.TrimSpace(ref))
-	upper = strings.ReplaceAll(upper, "-", "_")
-	upper = strings.ReplaceAll(upper, " ", "_")
-	return upper
 }
 
 func normalizeKeyName(key string) string {

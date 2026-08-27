@@ -27,11 +27,11 @@ func TestCatalogIsCompleteUniqueAndRoundTrips(t *testing.T) {
 
 func TestIndexNormalizesHumanReferences(t *testing.T) {
 	cases := map[string]int{
-		"index-1":  0,
+		"index-1":   0,
 		" INDEX 6 ": 5,
-		"middle-2": 7,
-		"ring 5":   15,
-		"pinky_6":  21,
+		"middle-2":  7,
+		"ring 5":    15,
+		"pinky_6":   21,
 	}
 	for reference, want := range cases {
 		got, ok := Index(reference)

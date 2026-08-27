@@ -5,7 +5,7 @@ import (
 	"sort"
 
 	domainaction "hapticpad-go-app/action"
-	"hapticpad-go-app/config"
+	"hapticpad-go-app/controls"
 	"hapticpad-go-app/textinput"
 )
 
@@ -111,7 +111,7 @@ func getBindingFromProfile(profile *textinput.Profile, language, mode string, bu
 	if profile == nil || profile.Bindings == nil || profile.Bindings[language] == nil || profile.Bindings[language][mode] == nil {
 		return domainaction.Action{}, false
 	}
-	action, ok := profile.Bindings[language][mode][config.ButtonNames[button]]
+	action, ok := profile.Bindings[language][mode][controls.Name(button)]
 	return domainaction.Clone(action), ok
 }
 

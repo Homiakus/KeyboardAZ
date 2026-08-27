@@ -8,9 +8,10 @@ import (
 	"strings"
 
 	domainaction "hapticpad-go-app/action"
+	"hapticpad-go-app/controls"
 )
 
-const MainButtonCount = 22
+const MainButtonCount = controls.MainButtonCount
 
 const (
 	ModifierShift       uint8 = 1 << 0

@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 
 	domainaction "hapticpad-go-app/action"
-	"hapticpad-go-app/config"
+	"hapticpad-go-app/controls"
 )
 
 const (
@@ -111,7 +111,7 @@ func (r *Resolver) ResolveStroke(language string, modifiers uint8, button int) (
 	}
 	compiled := r.compiled.Load()
 	if compiled == nil || !compiled.set[languageID][modifiers][button] {
-		return nil, fmt.Errorf("no action assigned for language=%s mode=%s button=%s", languageCode, ModeID(modifiers), config.ButtonNames[button])
+		return nil, fmt.Errorf("no action assigned for language=%s mode=%s button=%s", languageCode, ModeID(modifiers), controls.Name(button))
 	}
 	return &compiled.strokes[languageID][modifiers][button], nil
 }
@@ -175,7 +175,7 @@ func DefaultLayoutConfig() *LayoutConfig {
 			}
 			for mode, value := range defaults {
 				if value != "" {
-					profile.Bindings[language][mode][config.ButtonNames[button]] = domainaction.Action{Type: domainaction.Text, Text: value}
+					profile.Bindings[language][mode][controls.Name(button)] = domainaction.Action{Type: domainaction.Text, Text: value}
 				}
 			}
 		}
@@ -360,7 +360,7 @@ func GetBinding(layout *LayoutConfig, profileID, language, mode string, button i
 	if profile == nil {
 		return domainaction.Action{}, false
 	}
-	action, ok := profile.Bindings[language][mode][config.ButtonNames[button]]
+	action, ok := profile.Bindings[language][mode][controls.Name(button)]
 	return domainaction.Clone(action), ok
 }
 
@@ -379,7 +379,7 @@ func SetBinding(layout *LayoutConfig, profileID, language, mode string, button i
 		return fmt.Errorf("profile %q does not exist", profileID)
 	}
 	bindings := EnsureBindingMaps(profile, language, mode)
-	buttonName := config.ButtonNames[button]
+	buttonName := controls.Name(button)
 	if action == nil || action.Type == "" {
 		delete(bindings, buttonName)
 		return nil
@@ -477,14 +477,7 @@ func normalizeProfileID(value string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func buttonIndex(name string) (int, bool) {
-	for i, candidate := range config.ButtonNames {
-		if candidate == name {
-			return i, true
-		}
-	}
-	return 0, false
-}
+func buttonIndex(name string) (int, bool) { return controls.Index(name) }
 
 func compileLayout(layout *LayoutConfig) (*compiledLayout, error) {
 	if err := ValidateLayout(layout); err != nil {
