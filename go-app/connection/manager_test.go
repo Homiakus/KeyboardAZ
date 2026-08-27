@@ -147,7 +147,7 @@ func TestManagerTelemetryIsInstanceScoped(t *testing.T) {
 	firstHealth := telemetry.NewHealth()
 	secondHealth := telemetry.NewHealth()
 	first := NewManagerWithRecorder(firstHealth)
-	second := NewManagerWithRecorder(secondHealth)
+	_ = NewManagerWithRecorder(secondHealth)
 	now := time.Unix(4000, 0)
 
 	first.MarkLost(now, errors.New("removed"))
@@ -168,7 +168,7 @@ func TestManagerTelemetryIsInstanceScoped(t *testing.T) {
 	if got := firstHealth.Snapshot().Reconnects; got != 1 {
 		t.Fatalf("first recorder reconnect successes=%d want 1", got)
 	}
-	if got := second.HealthSnapshot; got != nil {
-		_ = got
+	if got := secondHealth.Snapshot().Reconnects; got != 0 {
+		t.Fatalf("success telemetry leaked to second manager: reconnects=%d", got)
 	}
 }
