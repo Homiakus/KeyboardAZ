@@ -190,7 +190,8 @@ type HistoryEntry struct {
 
 func main() {
 	go func() {
-		w := app.NewWindow(
+		w := new(app.Window)
+		w.Option(
 			app.Title("Hapticpad Control · Configurator v2.2"),
 			app.Size(1220, 820),
 		)
@@ -307,7 +308,7 @@ func run(w *app.Window) error {
 
 	var ops op.Ops
 	for {
-		e := w.NextEvent()
+		e := w.Event()
 		switch e := e.(type) {
 		case app.DestroyEvent:
 			// Останавливаем обработку сообщений
