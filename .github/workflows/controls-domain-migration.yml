@@ -65,6 +65,12 @@ jobs:
           s = path.read_text(encoding='utf-8')
           s = s.replace('\t"hapticpad-go-app/config"\n', '\t"hapticpad-go-app/controls"\n', 1)
           s = s.replace('config.ButtonNames[button]', 'controls.Name(button)')
+          s, n = re.subn(
+              r'func buttonIndex\(name string\) \(int, bool\) \{.*?\n\}',
+              'func buttonIndex(name string) (int, bool) { return controls.Index(name) }',
+              s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit(f'textinput buttonIndex replacements={n}')
           if 'config.' in s or 'hapticpad-go-app/config' in s:
               raise SystemExit('textinput/config.go still references config after catalog migration')
           path.write_text(s, encoding='utf-8')
