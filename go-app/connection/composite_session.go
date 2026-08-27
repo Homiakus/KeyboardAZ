@@ -41,9 +41,14 @@ func NewCompositeSession(control Session, realtime EventSource) (*CompositeSessi
 		errors:   make(chan error, 8),
 		done:     make(chan struct{}),
 	}
-	s.wg.Add(2)
+	// CDC remains active for commands, ready/status/error diagnostics and
+	// telemetry. CompositeSession intentionally exposes only HID realtime events,
+	// so control.Messages must be drained or the bounded serial reader queue will
+	// eventually fill on periodic ready/status traffic and stall the CDC reader.
+	s.wg.Add(3)
 	go s.forwardErrors(control.Errors())
 	go s.forwardErrors(realtime.Errors())
+	go s.drainControlMessages(control.Messages())
 	return s, nil
 }
 
@@ -107,6 +112,24 @@ func (s *CompositeSession) forwardErrors(source <-chan error) {
 			default:
 				// Preserve realtime behavior if diagnostics are not being consumed.
 			}
+		}
+	}
+}
+
+func (s *CompositeSession) drainControlMessages(source <-chan protocol.Event) {
+	defer s.wg.Done()
+	for source != nil {
+		select {
+		case <-s.done:
+			return
+		case _, ok := <-source:
+			if !ok {
+				return
+			}
+			// The serial Reader records protocol/sequence telemetry before enqueue.
+			// These messages are control-plane diagnostics only once HID realtime is
+			// active, so consuming them here prevents backpressure without duplicating
+			// semantic events into the application hot path.
 		}
 	}
 }
