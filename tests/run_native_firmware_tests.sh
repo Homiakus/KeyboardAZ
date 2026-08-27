@@ -11,6 +11,12 @@ g++ -std=gnu++17 -Wall -Wextra -Werror \
 
 g++ -std=gnu++17 -Wall -Wextra -Werror \
   -Itests/native -Iinclude \
+  tests/native/protocol_v2_test.cpp \
+  -o .test-build/protocol_v2_test
+.test-build/protocol_v2_test
+
+g++ -std=gnu++17 -Wall -Wextra -Werror \
+  -Itests/native -Iinclude \
   tests/native/protocol_v3_test.cpp \
   -o .test-build/protocol_v3_test
 .test-build/protocol_v3_test
